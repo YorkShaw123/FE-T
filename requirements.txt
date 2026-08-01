@@ -1,0 +1,5 @@
+flask==3.1.1
+flask-sqlalchemy==3.1.1
+openai==1.109.1
+python-dotenv==1.1.1
+olefile==0.47
