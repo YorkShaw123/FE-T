@@ -223,6 +223,8 @@ class GenerationRecord(db.Model):
     # 风格链运行快照；旧记录默认为 legacy。
     style_mode = db.Column(db.String(30), nullable=False, default='legacy')
     style_profile_snapshot = db.Column(db.Text, default='[]')
+    # 是否置顶
+    is_pinned = db.Column(db.Boolean, nullable=False, default=False)
     # 时间戳
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -245,6 +247,7 @@ class GenerationRecord(db.Model):
             'notes': self.notes,
             'style_mode': self.style_mode or 'legacy',
             'style_profile_snapshot': self.style_profile_snapshot or '[]',
+            'is_pinned': self.is_pinned,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -259,6 +262,7 @@ class GenerationRecord(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'has_deai': bool(self.deai_content),
             'has_edited': bool(self.edited_content),
+            'is_pinned': self.is_pinned,
             'content_preview': (self.deai_content or self.content)[:200] + '...' if len(self.deai_content or self.content) > 200 else (self.deai_content or self.content),
         }
 

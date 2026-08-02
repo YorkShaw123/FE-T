@@ -10,6 +10,7 @@ from services.template_service import (
     get_all_templates,
     update_template,
     delete_template,
+    delete_all_templates,
     toggle_template_active,
     get_version_history,
     restore_version,
@@ -118,6 +119,16 @@ def remove_template(template_id):
     try:
         delete_template(template_id)
         return jsonify({'success': True})
+    except TemplateServiceError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@template_bp.route('', methods=['DELETE'])
+def remove_all_templates():
+    """删除所有模板"""
+    try:
+        count = delete_all_templates()
+        return jsonify({'success': True, 'deleted': count})
     except TemplateServiceError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 

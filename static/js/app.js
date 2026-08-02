@@ -1803,6 +1803,19 @@
         }
     });
 
+    // 一键删除所有模板
+    safeBind('#btn-delete-all-templates', 'click', async () => {
+        if (!confirm('确定要删除所有模板吗？此操作不可撤销。')) return;
+        try {
+            const result = await api('/api/templates', { method: 'DELETE' });
+            toast(`已删除 ${result.deleted} 个模板`);
+            closeTemplateEditor();
+            loadTemplatesList();
+        } catch (e) {
+            toast('删除失败: ' + e.message, 'error');
+        }
+    });
+
     // 版本历史
     safeBind('#btn-version-history', 'click', async () => {
         const id = $('#edit-template-id').value;
@@ -1864,6 +1877,8 @@
             container.innerHTML = `<div class="list-toolbar history-toolbar">
                 <input id="history-search" class="input-text" type="search"
                     placeholder="搜索标题、模型或正文摘要">
+                <span class="list-count">${records.length} 条</span>
+                <button id="btn-delete-all-records" class="btn btn-xs btn-danger" style="margin-left:auto;">🗑️ 删除全部</button>
             </div><div id="history-list-results"></div>`;
             renderHistoryRecords(records);
             $('#history-search').addEventListener('input', event => {
@@ -1874,6 +1889,7 @@
                     )
                 ));
             });
+            safeBind('#btn-delete-all-records', 'click', deleteAllRecords);
         } catch (e) {
             console.error('加载历史记录失败:', e);
         }
@@ -1887,26 +1903,136 @@
             return;
         }
         container.innerHTML = records.map(r => `
-                <div class="history-item" data-id="${r.id}">
-                    <div class="h-title">${escapeHtml(r.title)}</div>
+                <div class="history-item ${r.is_pinned ? 'pinned' : ''}" data-id="${r.id}">
+                    <div class="h-title" data-field="title">${escapeHtml(r.title)}</div>
                     <div class="h-preview">${escapeHtml(r.content_preview || '')}</div>
                     <div class="h-meta">
                         <span>${r.model_used || '未知模型'}</span>
                         ${r.has_deai ? '<span style="color:var(--accent-success)">已去AI味</span>' : ''}
                         ${r.has_edited ? '<span class="history-edited-badge">有修改版</span>' : ''}
                         <span>${new Date(r.created_at).toLocaleString('zh-CN')}</span>
+                        <span class="history-actions" onclick="event.stopPropagation();">
+                            <button data-action="rename" title="重命名">✏️</button>
+                            <button data-action="pin" class="${r.is_pinned ? 'active' : ''}" title="${r.is_pinned ? '取消置顶' : '置顶'}">${r.is_pinned ? '★' : '☆'}</button>
+                            <button data-action="delete" class="danger" title="删除">🗑️</button>
+                        </span>
                     </div>
                 </div>
             `).join('');
 
         $$('.history-item', container).forEach(item => {
-            item.addEventListener('click', () => {
+            item.addEventListener('click', event => {
+                if (event.target.closest('.history-actions') || event.target.closest('.history-rename-input')) return;
                 const id = parseInt(item.dataset.id);
                 loadHistoryDetail(id);
                 $$('.history-item', container).forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
             });
         });
+
+        $$('.history-actions button', container).forEach(button => {
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                const item = button.closest('.history-item');
+                const id = parseInt(item.dataset.id);
+                const action = button.dataset.action;
+                if (action === 'rename') startRenameHistoryRecord(item, id);
+                else if (action === 'pin') togglePinHistoryRecord(id, !item.classList.contains('pinned'));
+                else if (action === 'delete') deleteHistoryRecord(id);
+            });
+        });
+    }
+
+    async function togglePinHistoryRecord(id, pinned) {
+        try {
+            await api(`/api/generation/records/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_pinned: pinned }),
+            });
+            toast(pinned ? '已置顶' : '已取消置顶');
+            loadHistoryList();
+        } catch (e) {
+            toast('操作失败: ' + e.message, 'error');
+        }
+    }
+
+    async function deleteHistoryRecord(id) {
+        if (!confirm('确定要删除这条生成记录吗？此操作不可撤销。')) return;
+        try {
+            await api(`/api/generation/records/${id}`, { method: 'DELETE' });
+            toast('生成记录已删除');
+            if (state.currentRecordId === id) {
+                $('#history-detail').style.display = 'none';
+                state.currentRecordId = null;
+            }
+            loadHistoryList();
+        } catch (e) {
+            toast('删除失败: ' + e.message, 'error');
+        }
+    }
+
+    async function deleteAllRecords() {
+        if (!confirm('确定要删除所有生成记录吗？此操作不可撤销。')) return;
+        try {
+            const result = await api('/api/generation/records', { method: 'DELETE' });
+            toast(`已删除 ${result.deleted} 条生成记录`);
+            $('#history-detail').style.display = 'none';
+            state.currentRecordId = null;
+            loadHistoryList();
+        } catch (e) {
+            toast('删除失败: ' + e.message, 'error');
+        }
+    }
+
+    function startRenameHistoryRecord(item, id) {
+        const titleEl = $('.h-title[data-field="title"]', item);
+        if (!titleEl || $('.history-rename-input', item)) return;
+
+        const currentTitle = titleEl.textContent;
+        titleEl.classList.add('editing');
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'history-rename-input';
+        input.value = currentTitle;
+        input.placeholder = '输入新名称';
+        titleEl.before(input);
+        input.focus();
+        input.setSelectionRange(0, input.value.length);
+
+        async function save() {
+            if (!input.isConnected) return;
+            const newTitle = input.value.trim();
+            if (newTitle && newTitle !== currentTitle) {
+                try {
+                    await api(`/api/generation/records/${id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ title: newTitle }),
+                    });
+                    titleEl.textContent = newTitle;
+                    toast('已重命名');
+                    if (state.currentRecordId === id) {
+                        $('#history-detail-title').textContent = newTitle;
+                    }
+                    const record = state.historyRecords.find(r => r.id === id);
+                    if (record) record.title = newTitle;
+                } catch (e) {
+                    toast('重命名失败: ' + e.message, 'error');
+                }
+            }
+            cleanup();
+        }
+
+        function cleanup() {
+            input.remove();
+            titleEl.classList.remove('editing');
+        }
+
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') save();
+            else if (event.key === 'Escape') cleanup();
+        });
+        input.addEventListener('blur', save);
     }
 
     function renderEditedHistoryDiff(original, edited) {

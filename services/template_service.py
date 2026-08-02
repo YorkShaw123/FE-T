@@ -165,6 +165,27 @@ def delete_template(template_id):
     db.session.commit()
 
 
+def delete_all_templates():
+    """删除所有模板（物理删除）
+    使用自底向上逐层删除，避免自引用外键约束错误。
+    """
+    from sqlalchemy.orm import aliased
+
+    count = 0
+    child = aliased(PromptTemplate)
+    while True:
+        leaves = PromptTemplate.query.outerjoin(
+            child, PromptTemplate.id == child.parent_id
+        ).filter(child.id.is_(None)).all()
+        if not leaves:
+            break
+        for leaf in leaves:
+            db.session.delete(leaf)
+            count += 1
+        db.session.commit()
+    return count
+
+
 def toggle_template_active(template_id):
     """切换模板启用/禁用状态"""
     template = get_template(template_id)

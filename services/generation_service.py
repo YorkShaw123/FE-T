@@ -15,7 +15,7 @@ from services.prompt_assembler import (
 from services.api_client import LLMClient
 from services.errors import GenerationError
 from services.generation.editing import transform_article_text
-from services.generation.records import delete_record, get_record, get_records, update_record
+from services.generation.records import delete_all_records, delete_record, get_record, get_records, update_record
 from services.summarizer import should_summarize, summarize_text
 from services.token_budget import calculate_token_budget, format_budget_error
 from config import Config

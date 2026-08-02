@@ -10,6 +10,7 @@ from services.generation_service import (
     get_records,
     update_record,
     delete_record,
+    delete_all_records,
     get_assembled_preview,
     transform_article_text,
     GenerationError,
@@ -256,5 +257,15 @@ def remove_record(record_id):
     try:
         delete_record(record_id)
         return jsonify({'success': True})
+    except GenerationError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@generation_bp.route('/records', methods=['DELETE'])
+def remove_all_records():
+    """删除所有生成记录"""
+    try:
+        count = delete_all_records()
+        return jsonify({'success': True, 'deleted': count})
     except GenerationError as e:
         return jsonify({'success': False, 'error': str(e)}), 400

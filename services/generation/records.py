@@ -11,7 +11,8 @@ def get_record(record_id):
 
 def get_records(page=1, per_page=20):
     pagination = GenerationRecord.query.order_by(
-        GenerationRecord.created_at.desc()
+        GenerationRecord.is_pinned.desc(),
+        GenerationRecord.created_at.desc(),
     ).paginate(page=page, per_page=per_page, error_out=False)
     return {
         'items': [record.to_brief_dict() for record in pagination.items],
@@ -38,3 +39,9 @@ def delete_record(record_id):
         raise GenerationError(f'记录不存在: {record_id}')
     db.session.delete(record)
     db.session.commit()
+
+
+def delete_all_records():
+    count = GenerationRecord.query.delete()
+    db.session.commit()
+    return count

@@ -29,6 +29,11 @@ def apply_sqlite_migrations(db):
             "ALTER TABLE generation_records "
             "ADD COLUMN style_profile_snapshot TEXT DEFAULT '[]'"
         ))
+    if 'is_pinned' not in record_columns:
+        db.session.execute(db.text(
+            "ALTER TABLE generation_records "
+            "ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT 0"
+        ))
 
     db.session.execute(db.text(
         'CREATE INDEX IF NOT EXISTS ix_prompt_templates_category_active '
