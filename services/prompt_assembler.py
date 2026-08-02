@@ -5,7 +5,7 @@
 import re
 import json
 from sqlalchemy.orm import aliased
-from database.models import PromptTemplate
+from database.models import PromptTemplate, StyleProfile
 from database import db
 
 
@@ -163,6 +163,7 @@ def assemble_structured_messages(
     previous_article='',
     style_strength='light',
     system_prompt='',
+    scene_type='auto',
 ):
     """按消息边界组装提示词；不改变旧版 ``assemble_prompt`` 的行为。"""
     variable_values = variable_values or {}
@@ -222,6 +223,178 @@ def assemble_structured_messages(
     output_parts.append('【最终交付要求】\n直接输出完整成稿，不解释写作过程，不复述任务或素材。')
     messages.append({'role': 'user', 'content': '【输出要求】\n\n' + '\n\n'.join(output_parts)})
     return messages
+
+
+def assemble_style_pipeline_messages(
+    templates,
+    variable_values=None,
+    custom_prefix='',
+    custom_suffix='',
+    previous_article='',
+    style_strength='light',
+    system_prompt='',
+    scene_type='auto',
+):
+    """使用有效 Style Card 构建智能风格消息；无有效卡时返回 ``(None, metadata)``。"""
+    from services.style_profile_service import style_source_hash
+
+    variable_values = variable_values or {}
+    active = [tpl for tpl in templates if tpl.is_active]
+    example_templates = [tpl for tpl in active if tpl.category == 'example']
+    example_ids = [tpl.id for tpl in example_templates]
+    profiles = (
+        StyleProfile.query.filter(StyleProfile.template_id.in_(example_ids)).all()
+        if example_ids else []
+    )
+    profile_by_template = {item.template_id: item for item in profiles}
+    usable = []
+    stale_ids = []
+    missing_ids = []
+    for template in example_templates:
+        profile = profile_by_template.get(template.id)
+        if not profile or profile.analysis_status != 'ready':
+            missing_ids.append(template.id)
+            continue
+        if profile.source_hash != style_source_hash(template.content):
+            stale_ids.append(template.id)
+            continue
+        try:
+            card = json.loads(profile.card_json or '{}')
+        except json.JSONDecodeError:
+            missing_ids.append(template.id)
+            continue
+        usable.append((template, profile, card))
+
+    metadata = {
+        'requested_template_ids': example_ids,
+        'usable_template_ids': [tpl.id for tpl, _, _ in usable],
+        'missing_template_ids': missing_ids,
+        'stale_template_ids': stale_ids,
+        'fallback_reason': '',
+        'profiles': [],
+        'selected_excerpts': [],
+        'selection_mode': '',
+        'resolved_scene_type': 'mixed',
+    }
+    if not usable:
+        metadata['fallback_reason'] = '没有可用且未过期的 Style Card'
+        return None, metadata
+
+    usable.sort(key=lambda item: (not item[1].is_primary, item[0].sort_order, item[0].id))
+    usable = usable[:3]
+    style_strength = style_strength if style_strength in {'light', 'medium', 'strict'} else 'light'
+
+    grouped = {key: [] for key in ('background', 'character', 'plot', 'constraint')}
+    for template in active:
+        if template.category in grouped:
+            grouped[template.category].append(fill_variables(template.content, variable_values).strip())
+
+    style_cards = []
+    for index, (template, profile, card) in enumerate(usable, start=1):
+        style_cards.append(
+            f'<style_card index="{index}" template="{template.name}">\n'
+            f'{json.dumps(card, ensure_ascii=False, indent=2)}\n</style_card>'
+        )
+        metadata['profiles'].append({
+            'profile_id': profile.id,
+            'template_id': template.id,
+            'template_version': template.version,
+            'source_hash': profile.source_hash,
+            'is_primary': profile.is_primary,
+            'card': card,
+        })
+
+    from services.style_excerpt_service import select_style_excerpts
+    query_text = '\n'.join(grouped['plot']) + '\n' + (previous_article or '')[-1200:]
+    selected, resolved_scene_type = select_style_excerpts(
+        usable,
+        scene_type=scene_type,
+        query_text=query_text,
+        style_strength=style_strength,
+    )
+    metadata['resolved_scene_type'] = resolved_scene_type
+    examples = []
+    if selected:
+        metadata['selection_mode'] = 'scene_retrieval'
+        for index, excerpt in enumerate(selected, start=1):
+            excerpt_content = fill_variables(excerpt['content'], variable_values)
+            reasons = '、'.join(excerpt['reasons']) or '综合评分'
+            examples.append(
+                f'<example index="{index}" template="{excerpt["template_name"]}" '
+                f'scene_type="{excerpt["scene_type"]}" pace="{excerpt["pace"]}" '
+                f'selection_reason="{reasons}">\n{excerpt_content}\n</example>'
+            )
+            metadata['selected_excerpts'].append({
+                key: excerpt[key] for key in (
+                    'id', 'style_profile_id', 'source_order', 'scene_type', 'pov',
+                    'emotion', 'dialogue_ratio', 'pace', 'tags', 'functions',
+                    'is_pinned', 'score', 'reasons', 'template_name', 'char_count',
+                )
+            })
+    else:
+        # 尚未生成片段时仍保留第一里程碑的少量代表性文本回退。
+        metadata['selection_mode'] = 'representative_fallback'
+        for index, (template, _, _) in enumerate(usable, start=1):
+            excerpt_content = fill_variables(template.content, variable_values).strip()[:1600]
+            examples.append(
+                f'<example index="{index}" template="{template.name}" '
+                f'selection_reason="尚未建立片段库，使用代表性开头">\n'
+                f'{excerpt_content}\n</example>'
+            )
+
+    system_parts = [system_prompt.strip()]
+    system_parts.append(
+        '你是小说正文写作引擎。Style Card 是本次写作的可执行风格规范，不是故事资料。'
+        '优先执行其中的正向行为、视角限制和可检查规则；不得照抄范例中的人物、地点、情节、'
+        '专有名词或独特句子。不得用模型默认的解释型、总结型文风替代风格规范。'
+    )
+    if custom_prefix and custom_prefix.strip():
+        system_parts.append(f'【本次系统级补充要求】\n{custom_prefix.strip()}')
+    system_parts.append('\n\n'.join(style_cards))
+    if style_strength in STYLE_STRENGTH_CONSTRAINTS:
+        system_parts.append(STYLE_STRENGTH_CONSTRAINTS[style_strength])
+    messages = [{'role': 'system', 'content': '\n\n'.join(part for part in system_parts if part)}]
+
+    if grouped['plot']:
+        messages.append({
+            'role': 'user',
+            'content': '<writing_task>\n以下剧情事实必须完成，不得遗漏或擅自改变：\n'
+                       + '\n\n'.join(grouped['plot']) + '\n</writing_task>',
+        })
+
+    materials = []
+    if grouped['background']:
+        materials.append('【背景设定】\n' + '\n\n'.join(grouped['background']))
+    if grouped['character']:
+        materials.append('【人物设定】\n' + '\n\n'.join(grouped['character']))
+    if previous_article and previous_article.strip():
+        materials.append('【前置文章/已写内容】\n' + previous_article.strip())
+    if materials:
+        messages.append({
+            'role': 'user',
+            'content': '<story_materials>\n' + '\n\n'.join(materials) + '\n</story_materials>',
+        })
+
+    messages.append({
+        'role': 'user',
+        'content': (
+            '<reference_examples>\n以下片段只用于学习语言机制，禁止续写其内容。\n\n'
+            + '\n\n'.join(examples)
+            + '\n</reference_examples>'
+        ),
+    })
+
+    constraints = []
+    if grouped['constraint']:
+        constraints.append('【写作约束】\n' + '\n\n'.join(grouped['constraint']))
+    if custom_suffix and custom_suffix.strip():
+        constraints.append('【本次输出要求】\n' + custom_suffix.strip())
+    constraints.append(
+        '【内部检查】\n输出前在内部检查视角、句子节奏、段落组织、对话方式、禁用表达和段尾方式；'
+        '只输出完整正文，不输出分析、Style Card、检查过程或说明。'
+    )
+    messages.append({'role': 'user', 'content': '\n\n'.join(constraints)})
+    return messages, metadata
 
 
 def get_templates_by_category(active_only=True):

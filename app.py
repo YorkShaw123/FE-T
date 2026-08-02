@@ -8,6 +8,7 @@ from config import config_by_name
 from database import init_db
 from routes.template_routes import template_bp
 from routes.generation_routes import generation_bp
+from routes.style_routes import style_bp
 
 
 def create_app(config_name=None):
@@ -24,6 +25,7 @@ def create_app(config_name=None):
     # 注册蓝图
     app.register_blueprint(template_bp)
     app.register_blueprint(generation_bp)
+    app.register_blueprint(style_bp)
 
     # 注册错误处理
     register_error_handlers(app)

@@ -69,6 +69,121 @@ class PromptTemplate(db.Model):
         return f'<PromptTemplate {self.name} v{self.version}>'
 
 
+class StyleProfile(db.Model):
+    """范例文章对应的结构化风格卡；与具体模板版本绑定。"""
+    __tablename__ = 'style_profiles'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    template_id = db.Column(
+        db.Integer,
+        db.ForeignKey('prompt_templates.id', ondelete='CASCADE'),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    template_version = db.Column(db.Integer, nullable=False, default=1)
+    source_hash = db.Column(db.String(64), nullable=False, index=True)
+    schema_version = db.Column(db.Integer, nullable=False, default=1)
+    # 最近一次自动分析结果，以及用户当前实际使用的结果。
+    analysis_card_json = db.Column(db.Text, nullable=False, default='{}')
+    card_json = db.Column(db.Text, nullable=False, default='{}')
+    analysis_model = db.Column(db.String(100), default='')
+    analysis_status = db.Column(db.String(30), nullable=False, default='ready')
+    error_message = db.Column(db.Text, default='')
+    is_primary = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=utcnow)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
+
+    template = db.relationship('PromptTemplate', backref=db.backref(
+        'style_profile', uselist=False, cascade='all, delete-orphan', passive_deletes=True
+    ))
+
+    def to_dict(self, current_source_hash=None):
+        import json
+        try:
+            card = json.loads(self.card_json or '{}')
+        except (TypeError, json.JSONDecodeError):
+            card = {}
+        return {
+            'id': self.id,
+            'template_id': self.template_id,
+            'template_version': self.template_version,
+            'source_hash': self.source_hash,
+            'schema_version': self.schema_version,
+            'card': card,
+            'analysis_model': self.analysis_model,
+            'analysis_status': self.analysis_status,
+            'error_message': self.error_message,
+            'is_primary': self.is_primary,
+            'is_stale': bool(current_source_hash and current_source_hash != self.source_hash),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class StyleExcerpt(db.Model):
+    """由范例文章切分得到的可检索风格片段。"""
+    __tablename__ = 'style_excerpts'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    style_profile_id = db.Column(
+        db.Integer,
+        db.ForeignKey('style_profiles.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    content = db.Column(db.Text, nullable=False)
+    content_hash = db.Column(db.String(64), nullable=False, index=True)
+    source_order = db.Column(db.Integer, nullable=False, default=0)
+    scene_type = db.Column(db.String(50), nullable=False, default='mixed', index=True)
+    pov = db.Column(db.String(80), default='')
+    emotion = db.Column(db.String(200), default='')
+    dialogue_ratio = db.Column(db.Float, nullable=False, default=0.0)
+    pace = db.Column(db.String(30), nullable=False, default='medium')
+    tags_json = db.Column(db.Text, nullable=False, default='[]')
+    functions_json = db.Column(db.Text, nullable=False, default='[]')
+    analysis_model = db.Column(db.String(100), default='')
+    analysis_status = db.Column(db.String(30), nullable=False, default='ready')
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    is_pinned = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=utcnow)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
+
+    profile = db.relationship('StyleProfile', backref=db.backref(
+        'excerpts', cascade='all, delete-orphan', passive_deletes=True,
+        order_by='StyleExcerpt.source_order',
+    ))
+
+    def to_dict(self):
+        import json
+
+        def load_list(value):
+            try:
+                result = json.loads(value or '[]')
+                return result if isinstance(result, list) else []
+            except (TypeError, json.JSONDecodeError):
+                return []
+
+        return {
+            'id': self.id,
+            'style_profile_id': self.style_profile_id,
+            'content': self.content,
+            'char_count': len(self.content or ''),
+            'source_order': self.source_order,
+            'scene_type': self.scene_type,
+            'pov': self.pov,
+            'emotion': self.emotion,
+            'dialogue_ratio': self.dialogue_ratio,
+            'pace': self.pace,
+            'tags': load_list(self.tags_json),
+            'functions': load_list(self.functions_json),
+            'analysis_model': self.analysis_model,
+            'analysis_status': self.analysis_status,
+            'is_enabled': self.is_enabled,
+            'is_pinned': self.is_pinned,
+        }
+
+
 class GenerationRecord(db.Model):
     """生成记录模型
     保存每次AI生成的文章及所有上下文信息
@@ -105,6 +220,9 @@ class GenerationRecord(db.Model):
     notes = db.Column(db.Text, default='')
     # API原始响应
     api_response_raw = db.Column(db.Text, default='')
+    # 风格链运行快照；旧记录默认为 legacy。
+    style_mode = db.Column(db.String(30), nullable=False, default='legacy')
+    style_profile_snapshot = db.Column(db.Text, default='[]')
     # 时间戳
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -125,6 +243,8 @@ class GenerationRecord(db.Model):
             'deai_prompt': self.deai_prompt,
             'rating': self.rating,
             'notes': self.notes,
+            'style_mode': self.style_mode or 'legacy',
+            'style_profile_snapshot': self.style_profile_snapshot or '[]',
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 

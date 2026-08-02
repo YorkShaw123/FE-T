@@ -4,14 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forestar Editor - AI文字创作助手</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <!-- 顶部导航栏 -->
     <header class="header">
         <div class="header-left">
-            <h1 class="logo">🌲 Forestar Editor</h1>
-            <span class="subtitle">AI文字创作助手</span>
+            <div class="brand-mark" aria-hidden="true"><span></span><i></i></div>
+            <div class="brand-copy">
+                <h1 class="logo">Forestar <span>Editor</span></h1>
+                <span class="subtitle">智能文字创作工作台</span>
+            </div>
         </div>
         <div class="header-center">
             <nav class="nav-tabs">
@@ -22,14 +26,16 @@
         </div>
         <div class="header-right">
             <!-- API密钥 -->
-            <div class="api-key-area">
+            <div class="api-key-area" aria-label="API 密钥">
+                <span class="control-label">密钥</span>
                 <input type="password" id="api-key-input" placeholder="输入API密钥（每次使用需手动输入）" autocomplete="off">
-                <button id="api-key-toggle" class="btn-icon" title="显示/隐藏">👁</button>
+                <button id="api-key-toggle" class="btn-icon" title="显示/隐藏" aria-label="显示或隐藏密钥">◉</button>
             </div>
             <!-- 主题切换 -->
-            <button id="theme-toggle" class="btn-icon" title="切换亮色/暗色模式">🌙</button>
+            <button id="theme-toggle" class="btn-icon theme-button" title="切换亮色/暗色模式" aria-label="切换明暗主题">◐</button>
             <!-- 模型选择器 -->
-            <div class="model-selector">
+            <div class="model-selector" aria-label="模型选择">
+                <span class="control-label">模型</span>
                 <select id="provider-select">
                     <option value="deepseek">DeepSeek</option>
                     <option value="openai">OpenAI</option>
@@ -104,6 +110,42 @@
                             <div class="panel-section style-control-section">
                                 <div class="section-header compact-header">
                                     <div>
+                                        <h3>风格处理方式</h3>
+                                        <p class="section-description">保留原文拼接，或使用已分析的 Style Card</p>
+                                    </div>
+                                </div>
+                                <div class="style-mode-segmented" role="radiogroup" aria-label="风格处理方式">
+                                    <label>
+                                        <input type="radio" name="workspace-style-mode" value="legacy" checked>
+                                        <span><strong>原文拼接</strong><small>完全兼容现有方式</small></span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="workspace-style-mode" value="smart">
+                                        <span><strong>智能风格链</strong><small>Style Card + 少量范例</small></span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="workspace-style-mode" value="off">
+                                        <span><strong>关闭参考</strong><small>不发送范例文章</small></span>
+                                    </label>
+                                </div>
+                                <p id="style-mode-help" class="strength-help">沿用当前范例文章拼接逻辑，不改变任何原有行为。</p>
+                                <div id="style-scene-control" class="style-scene-control" style="display:none;">
+                                    <label for="style-scene-type">当前场景</label>
+                                    <select id="style-scene-type" class="input-select">
+                                        <option value="auto">自动判断</option>
+                                        <option value="dialogue">对话场景</option>
+                                        <option value="action">动作场景</option>
+                                        <option value="psychology">心理描写</option>
+                                        <option value="environment">环境描写</option>
+                                        <option value="transition">场景转场</option>
+                                        <option value="narration">叙事推进</option>
+                                        <option value="mixed">综合场景</option>
+                                    </select>
+                                    <small>用于从片段库中选择最相关的 2—4 个范例</small>
+                                </div>
+                                <div class="style-control-divider"></div>
+                                <div class="section-header compact-header">
+                                    <div>
                                         <h3>风格参考强度</h3>
                                         <p class="section-description">控制本次生成对“范例文章”模板的模仿程度</p>
                                     </div>
@@ -167,32 +209,6 @@
                             </div>
                         </div>
 
-                        <!-- 中列：提示词预览 -->
-                        <div class="preview-column">
-                            <div class="panel-section prompt-preview-card" id="prompt-preview-section">
-                                <div class="preview-card-header">
-                                    <div class="preview-card-title">
-                                        <span class="preview-card-icon">🔍</span>
-                                        <div>
-                                            <h3>提示词预览</h3>
-                                            <p>检查模板、变量与前置文章的最终组合</p>
-                                        </div>
-                                    </div>
-                                    <button id="btn-close-preview" class="btn btn-xs btn-outline" style="display:none;">清空</button>
-                                </div>
-                                <div id="prompt-preview-empty" class="prompt-preview-empty">
-                                    <div class="preview-illustration">✦</div>
-                                    <h4>生成前先检查完整提示词</h4>
-                                    <p>系统会将当前启用的模板、填写变量和前置文章组装在这里，方便发现遗漏。</p>
-                                    <button id="btn-preview-prompt" class="btn btn-primary preview-main-action" type="button">生成提示词预览</button>
-                                    <span>不会调用 AI，也不会消耗额度</span>
-                                </div>
-                                <pre id="prompt-preview-content" class="code-preview" style="display:none;"></pre>
-                                <div id="prompt-preview-meta" class="prompt-preview-meta" style="display:none;"></div>
-                                <div id="token-budget-panel" class="token-budget-panel" style="display:none;"></div>
-                            </div>
-                        </div>
-
                         <!-- 右列：生成结果 -->
                         <div class="result-column">
                             <!-- 生成结果区 -->
@@ -203,6 +219,14 @@
                                         <button id="btn-open-result-editor" class="btn btn-xs btn-primary">✍️ 全屏编辑</button>
                                         <button id="btn-copy-result" class="btn btn-xs btn-outline">📋 复制</button>
                                         <button id="btn-download-result" class="btn btn-xs btn-outline">💾 下载</button>
+                                    </div>
+                                </div>
+                                <!-- API 调用状态：属于结果栏内部，避免与结果区域并排重叠 -->
+                                <div id="loading-overlay" class="loading-overlay" style="display:none;">
+                                    <div class="loading-spinner"></div>
+                                    <div class="loading-copy">
+                                        <strong>正在生成</strong>
+                                        <p id="loading-text">正在连接 API，准备生成...</p>
                                     </div>
                                 </div>
                                 <!-- 思维链 -->
@@ -225,15 +249,50 @@
                                 </div>
                             </div>
 
-                            <!-- 加载动画 -->
-                            <div id="loading-overlay" class="loading-overlay" style="display:none; flex:1;">
-                                <div class="loading-spinner"></div>
-                                <p id="loading-text">正在生成文章...</p>
-                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- 可折叠提示词预览侧栏 -->
+            <aside id="prompt-preview-drawer" class="prompt-preview-drawer" aria-expanded="false">
+                <button id="btn-toggle-preview-drawer" class="preview-drawer-rail" type="button"
+                    aria-controls="prompt-preview-drawer-body" aria-expanded="false" title="展开提示词预览">
+                    <span class="preview-drawer-icon">⌘</span>
+                    <span class="preview-drawer-label">提示词预览</span>
+                    <span class="preview-drawer-arrow">‹</span>
+                </button>
+                <div id="prompt-preview-drawer-body" class="preview-drawer-body">
+                    <div class="preview-drawer-header">
+                        <div class="preview-drawer-title">
+                            <span class="preview-card-icon">检</span>
+                            <div>
+                                <h2>组合结果</h2>
+                                <p>仅预览，不调用 AI</p>
+                            </div>
+                        </div>
+                        <div class="preview-drawer-actions">
+                            <button id="btn-close-preview" class="btn btn-xs btn-outline" style="display:none;">清空</button>
+                            <button id="btn-collapse-preview-drawer" class="btn-icon" type="button" aria-label="收起提示词预览">✕</button>
+                        </div>
+                    </div>
+                    <div class="preview-drawer-scroll">
+                        <div class="prompt-preview-card" id="prompt-preview-section">
+                            <div id="prompt-preview-empty" class="prompt-preview-empty">
+                                <div class="preview-illustration">✦</div>
+                                <h4>生成前检查完整提示词</h4>
+                                <p>系统会将当前启用的模板、填写变量和前置文章组装在这里，方便发现遗漏。</p>
+                                <button id="btn-preview-prompt" class="btn btn-primary preview-main-action" type="button">生成提示词预览</button>
+                                <span>不会调用 AI，也不会消耗额度</span>
+                            </div>
+                            <pre id="prompt-preview-content" class="code-preview" style="display:none;"></pre>
+                            <div id="prompt-preview-meta" class="prompt-preview-meta" style="display:none;"></div>
+                            <div id="style-selection-panel" class="style-selection-panel" style="display:none;"></div>
+                            <div id="token-budget-panel" class="token-budget-panel" style="display:none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </section>
 
         <!-- ====== 模板管理视图 ====== -->
@@ -263,6 +322,7 @@
                         <button id="btn-close-editor" class="editor-exit-btn" type="button">← 退出编辑</button>
                         <h3 id="editor-title">编辑模板</h3>
                         <div class="editor-header-actions">
+                            <button id="btn-open-style-card" class="btn btn-outline" type="button" style="display:none;">风格卡</button>
                             <button id="btn-version-history" class="btn btn-outline">版本历史</button>
                             <button id="btn-save-template" class="btn btn-primary">保存模板</button>
                         </div>
@@ -302,6 +362,58 @@
                             </div>
                         </div>
                     </div>
+                    <!-- 范例文章专用 Style Card 编辑面板 -->
+                    <aside id="style-card-panel" class="style-card-panel" style="display:none;">
+                        <div class="style-card-panel-header">
+                            <div>
+                                <span class="style-card-kicker">STYLE CARD</span>
+                                <h3>风格说明书</h3>
+                                <p id="style-card-status">尚未分析</p>
+                            </div>
+                            <button id="btn-close-style-card" class="btn-icon" type="button" aria-label="关闭风格卡">✕</button>
+                        </div>
+                        <div class="style-card-panel-body">
+                            <div id="style-card-empty" class="style-card-empty">
+                                <span>析</span>
+                                <h4>将范例转换成可执行规则</h4>
+                                <p>分析只提取句式、节奏、视角和表达习惯，不总结故事内容。</p>
+                                <button id="btn-analyze-style-card" class="btn btn-primary" type="button">分析当前范例</button>
+                                <small>需要先保存模板，并使用顶部当前模型与 API 密钥</small>
+                            </div>
+                            <div id="style-card-editor" style="display:none;">
+                                <div class="style-card-notice" id="style-card-notice"></div>
+                                <label class="style-card-primary"><input id="style-card-primary" type="checkbox"> 设为主风格模板</label>
+                                <label>风格摘要<input id="style-card-summary" class="input-text" type="text" placeholder="一句话描述可执行风格"></label>
+                                <div class="style-card-grid">
+                                    <label>叙述人称<input id="style-card-person" class="input-text" type="text"></label>
+                                    <label>叙述距离<input id="style-card-distance" class="input-text" type="text"></label>
+                                    <label>句式节奏<input id="style-card-rhythm" class="input-text" type="text"></label>
+                                    <label>语言语域<input id="style-card-register" class="input-text" type="text"></label>
+                                </div>
+                                <label>正向写作行为<textarea id="style-card-behaviors" class="input-textarea" rows="4" placeholder="每行一条"></textarea></label>
+                                <label>禁用表达<textarea id="style-card-avoid" class="input-textarea" rows="4" placeholder="每行一条"></textarea></label>
+                                <label>可检查规则<textarea id="style-card-rules" class="input-textarea" rows="6" placeholder="格式：hard|规则内容，每行一条"></textarea></label>
+                                <details class="style-card-json-details">
+                                    <summary>高级 JSON</summary>
+                                    <textarea id="style-card-json" class="input-textarea" rows="16" spellcheck="false"></textarea>
+                                    <button id="btn-apply-style-json" class="btn btn-outline btn-sm" type="button">应用 JSON 到表单</button>
+                                </details>
+                            </div>
+                            <section id="style-excerpt-section" class="style-excerpt-section" style="display:none;">
+                                <div class="style-excerpt-heading">
+                                    <div><h4>参考片段库</h4><p id="style-excerpt-summary">尚未生成片段</p></div>
+                                    <button id="btn-rebuild-style-excerpts" class="btn btn-outline btn-sm" type="button">生成片段</button>
+                                </div>
+                                <div class="style-excerpt-help">系统按自然段切分并标记场景、视角、情绪和节奏。关闭片段可排除，置顶片段将优先入选。</div>
+                                <div id="style-excerpt-list" class="style-excerpt-list"></div>
+                            </section>
+                        </div>
+                        <div class="style-card-panel-footer">
+                            <button id="btn-restore-style-card" class="btn btn-outline" type="button" style="display:none;">恢复自动分析</button>
+                            <button id="btn-refresh-style-card" class="btn btn-outline" type="button" style="display:none;">重新分析</button>
+                            <button id="btn-save-style-card" class="btn btn-primary" type="button" style="display:none;">保存风格卡</button>
+                        </div>
+                    </aside>
                     <!-- 版本历史 -->
                     <div id="version-history-panel" style="display:none;" class="version-panel">
                         <h4>版本历史</h4>

@@ -23,6 +23,8 @@ class GenerationRequest:
     template_ids: tuple = field(default_factory=tuple)
     style_strength: str = 'light'
     structured_prompt_enabled: bool = False
+    style_mode: str = 'legacy'
+    scene_type: str = 'auto'
 
     @classmethod
     def from_mapping(cls, data):
@@ -37,6 +39,15 @@ class GenerationRequest:
             template_ids = tuple(int(item) for item in raw_ids)
         except (TypeError, ValueError) as exc:
             raise GenerationError('template_ids 只能包含整数') from exc
+        style_mode = str(data.get('style_mode', 'legacy') or 'legacy')
+        if style_mode not in {'legacy', 'smart', 'off'}:
+            raise GenerationError('style_mode 仅支持 legacy、smart 或 off')
+        scene_type = str(data.get('scene_type', 'auto') or 'auto')
+        if scene_type not in {
+            'auto', 'dialogue', 'action', 'psychology', 'environment',
+            'transition', 'narration', 'mixed',
+        }:
+            raise GenerationError('scene_type 参数无效')
         return cls(
             api_key=str(data.get('api_key', '') or ''),
             provider=str(data.get('provider', 'deepseek') or 'deepseek'),
@@ -53,6 +64,8 @@ class GenerationRequest:
             template_ids=template_ids,
             style_strength=str(data.get('style_strength', 'light') or 'light'),
             structured_prompt_enabled=bool(data.get('structured_prompt_enabled', False)),
+            style_mode=style_mode,
+            scene_type=scene_type,
         )
 
     def load_templates(self):
@@ -83,6 +96,8 @@ class GenerationRequest:
             'stream': stream,
             'style_strength': self.style_strength,
             'structured_prompt_enabled': self.structured_prompt_enabled,
+            'style_mode': self.style_mode,
+            'scene_type': self.scene_type,
         }
 
     def preview_kwargs(self):

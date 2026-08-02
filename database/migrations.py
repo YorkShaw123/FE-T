@@ -19,6 +19,16 @@ def apply_sqlite_migrations(db):
         db.session.execute(db.text(
             "ALTER TABLE generation_records ADD COLUMN edit_history TEXT DEFAULT '[]'"
         ))
+    if 'style_mode' not in record_columns:
+        db.session.execute(db.text(
+            "ALTER TABLE generation_records "
+            "ADD COLUMN style_mode VARCHAR(30) NOT NULL DEFAULT 'legacy'"
+        ))
+    if 'style_profile_snapshot' not in record_columns:
+        db.session.execute(db.text(
+            "ALTER TABLE generation_records "
+            "ADD COLUMN style_profile_snapshot TEXT DEFAULT '[]'"
+        ))
 
     db.session.execute(db.text(
         'CREATE INDEX IF NOT EXISTS ix_prompt_templates_category_active '
@@ -28,6 +38,14 @@ def apply_sqlite_migrations(db):
         'CREATE INDEX IF NOT EXISTS ix_generation_records_created '
         'ON generation_records (created_at DESC)'
     ))
+    db.session.execute(db.text(
+        'CREATE INDEX IF NOT EXISTS ix_style_profiles_source_hash '
+        'ON style_profiles (source_hash)'
+    ))
+    db.session.execute(db.text(
+        'CREATE INDEX IF NOT EXISTS ix_style_excerpts_profile_scene '
+        'ON style_excerpts (style_profile_id, scene_type, is_enabled, source_order)'
+    ))
     db.session.commit()
 
 
@@ -35,4 +53,3 @@ def _column_names(db, table_name):
     # table_name 来自本模块常量调用，不接受用户输入。
     rows = db.session.execute(db.text(f'PRAGMA table_info({table_name})')).fetchall()
     return {row[1] for row in rows}
-

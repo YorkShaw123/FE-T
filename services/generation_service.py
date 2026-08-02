@@ -6,7 +6,12 @@ import json
 from datetime import datetime, timezone
 from database import db
 from database.models import GenerationRecord
-from services.prompt_assembler import assemble_prompt, assemble_structured_messages, get_all_variables
+from services.prompt_assembler import (
+    assemble_prompt,
+    assemble_structured_messages,
+    assemble_style_pipeline_messages,
+    get_all_variables,
+)
 from services.api_client import LLMClient
 from services.errors import GenerationError
 from services.generation.editing import transform_article_text
@@ -93,6 +98,35 @@ def _build_structured_messages(
     )
 
 
+def _build_smart_style_messages(
+    templates,
+    variable_values,
+    custom_prefix='',
+    custom_suffix='',
+    previous_article='',
+    style_strength='light',
+    scene_type='auto',
+):
+    """构建智能风格消息，并返回本次 Style Card 快照元数据。"""
+    compressed_previous = ''
+    if previous_article and previous_article.strip():
+        compressed_previous = (
+            summarize_text(previous_article)
+            if should_summarize(previous_article)
+            else previous_article.strip()
+        )
+    return assemble_style_pipeline_messages(
+        templates=templates,
+        variable_values=variable_values or {},
+        custom_prefix=custom_prefix or '',
+        custom_suffix=custom_suffix or '',
+        previous_article=compressed_previous,
+        style_strength=style_strength,
+        system_prompt=Config.GENERATION_SYSTEM_PROMPT,
+        scene_type=scene_type,
+    )
+
+
 def _messages_preview(messages):
     """将消息数组转换为适合保存和预览的可读文本。"""
     return '\n\n'.join(
@@ -118,6 +152,8 @@ def generate_article(
     stream=False,
     style_strength='light',
     structured_prompt_enabled=False,
+    style_mode='legacy',
+    scene_type='auto',
 ):
     """
     生成文章的核心流程
@@ -152,7 +188,11 @@ def generate_article(
     if not templates:
         raise GenerationError('请至少启用一个提示词模板')
 
-    active_templates = [t for t in templates if t.is_active]
+    style_mode = style_mode if style_mode in {'legacy', 'smart', 'off'} else 'legacy'
+    active_templates = [
+        t for t in templates
+        if t.is_active and not (style_mode == 'off' and t.category == 'example')
+    ]
     if not active_templates:
         raise GenerationError('没有活跃的模板')
     if provider not in Config.LLM_PROVIDERS:
@@ -165,7 +205,27 @@ def generate_article(
     # 初始化 LLM 客户端
     client = LLMClient(provider=provider, api_key=api_key.strip())
 
-    if structured_prompt_enabled:
+    style_metadata = {'profiles': [], 'fallback_reason': ''}
+    resolved_style_mode = style_mode
+    if style_mode == 'smart':
+        messages, style_metadata = _build_smart_style_messages(
+            templates=active_templates,
+            variable_values=variable_values,
+            custom_prefix=custom_prefix,
+            custom_suffix=custom_suffix,
+            previous_article=previous_article,
+            style_strength=style_strength,
+            scene_type=scene_type,
+        )
+        if messages:
+            assembled_prompt = _messages_preview(messages)
+        else:
+            # 智能链缺少有效卡时回退；不阻断用户原本可用的生成流程。
+            resolved_style_mode = 'smart_fallback_legacy'
+    else:
+        messages = None
+
+    if messages is None and structured_prompt_enabled:
         messages = _build_structured_messages(
             templates=active_templates,
             variable_values=variable_values,
@@ -175,7 +235,7 @@ def generate_article(
             style_strength=style_strength,
         )
         assembled_prompt = _messages_preview(messages)
-    else:
+    elif messages is None:
         # 兼容模式：完整保留原有“system + 单一 user 字符串”链路。
         assembled_prompt = _build_user_message(
             templates=active_templates,
@@ -199,25 +259,28 @@ def generate_article(
         deai_prompt=deai_prompt,
         thinking_enabled=thinking_enabled,
         reasoning_effort=reasoning_effort,
-        messages=messages if structured_prompt_enabled else None,
+        messages=messages if (structured_prompt_enabled or resolved_style_mode == 'smart') else None,
     )
     if token_budget['status'] == 'over':
         raise GenerationError(format_budget_error(token_budget))
 
     # 模板使用记录
     templates_used_ids = [t.id for t in active_templates]
+    style_profile_snapshot = json.dumps(style_metadata, ensure_ascii=False)
 
     if stream:
         return _generate_stream_flow(
             client, model, messages, thinking_enabled, reasoning_effort,
             deai_enabled, deai_prompt, assembled_prompt,
             templates_used_ids, variable_values, title, provider,
+            resolved_style_mode, style_profile_snapshot,
         )
     else:
         return _generate_sync_flow(
             client, model, messages, thinking_enabled, reasoning_effort,
             deai_enabled, deai_prompt, assembled_prompt,
             templates_used_ids, variable_values, title, provider,
+            resolved_style_mode, style_profile_snapshot,
         )
 
 
@@ -225,6 +288,7 @@ def _generate_sync_flow(
     client, model, messages, thinking_enabled, reasoning_effort,
     deai_enabled, deai_prompt, assembled_prompt,
     templates_used_ids, variable_values, title, provider,
+    style_mode, style_profile_snapshot,
 ):
     """同步生成流程"""
     # 第一版生成
@@ -278,6 +342,8 @@ def _generate_sync_flow(
         templates_used=json.dumps(templates_used_ids),
         variable_values=json.dumps(variable_values or {}, ensure_ascii=False),
         deai_prompt=deai_prompt if deai_enabled else '',
+        style_mode=style_mode,
+        style_profile_snapshot=style_profile_snapshot,
         created_at=utcnow(),
     )
     db.session.add(record)
@@ -297,6 +363,7 @@ def _generate_stream_flow(
     client, model, messages, thinking_enabled, reasoning_effort,
     deai_enabled, deai_prompt, assembled_prompt,
     templates_used_ids, variable_values, title, provider,
+    style_mode, style_profile_snapshot,
 ):
     """流式生成流程 - 返回生成器，逐chunk产出内容"""
     # 构建流式参数
@@ -381,6 +448,8 @@ def _generate_stream_flow(
             templates_used=json.dumps(templates_used_ids),
             variable_values=json.dumps(variable_values or {}, ensure_ascii=False),
             deai_prompt=deai_prompt if deai_enabled else '',
+            style_mode=style_mode,
+            style_profile_snapshot=style_profile_snapshot,
             created_at=utcnow(),
         )
         db.session.add(record)
@@ -419,13 +488,38 @@ def get_assembled_preview(
     thinking_enabled=False,
     reasoning_effort='high',
     structured_prompt_enabled=False,
+    style_mode='legacy',
+    scene_type='auto',
 ):
     """
     预览组装后的提示词（不调用API）
     """
-    active_templates = [t for t in templates if t.is_active]
+    style_mode = style_mode if style_mode in {'legacy', 'smart', 'off'} else 'legacy'
+    active_templates = [
+        t for t in templates
+        if t.is_active and not (style_mode == 'off' and t.category == 'example')
+    ]
+    style_metadata = {'profiles': [], 'fallback_reason': ''}
+    resolved_style_mode = style_mode
 
-    if structured_prompt_enabled:
+    if style_mode == 'smart':
+        messages, style_metadata = _build_smart_style_messages(
+            templates=active_templates,
+            variable_values=variable_values or {},
+            custom_prefix=custom_prefix,
+            custom_suffix=custom_suffix,
+            previous_article=previous_article,
+            style_strength=style_strength,
+            scene_type=scene_type,
+        )
+        if messages:
+            assembled = _messages_preview(messages)
+        else:
+            resolved_style_mode = 'smart_fallback_legacy'
+    else:
+        messages = None
+
+    if messages is None and structured_prompt_enabled:
         messages = _build_structured_messages(
             templates=active_templates,
             variable_values=variable_values or {},
@@ -435,8 +529,7 @@ def get_assembled_preview(
             style_strength=style_strength,
         )
         assembled = _messages_preview(messages)
-    else:
-        messages = None
+    elif messages is None:
         assembled = _build_user_message(
             templates=active_templates,
             variable_values=variable_values or {},
@@ -464,6 +557,11 @@ def get_assembled_preview(
         'template_count': len(active_templates),
         'char_count': len(assembled),
         'token_budget': token_budget,
-        'prompt_mode': 'structured' if structured_prompt_enabled else 'legacy',
+        'prompt_mode': (
+            'smart-style' if resolved_style_mode == 'smart'
+            else ('structured' if structured_prompt_enabled else 'legacy')
+        ),
+        'style_mode': resolved_style_mode,
+        'style_metadata': style_metadata,
         'message_count': len(messages) if messages else 2,
     }

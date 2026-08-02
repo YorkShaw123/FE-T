@@ -44,6 +44,8 @@
         historyRecords: [],
         templateSearch: '',
         generationController: null,
+        resultReady: false,
+        currentStyleCard: null,
     };
 
     const DRAFT_KEY = 'forestar_workspace_draft_v2';
@@ -52,10 +54,36 @@
         'deai-prompt', 'deai-enabled', 'provider-select', 'model-select',
         'thinking-enabled',
         'structured-prompt-enabled',
+        'style-scene-type',
     ];
 
     function getWorkspaceStyleStrength() {
         return $('input[name="workspace-style-strength"]:checked')?.value || 'light';
+    }
+
+    function getWorkspaceStyleMode() {
+        return $('input[name="workspace-style-mode"]:checked')?.value || 'legacy';
+    }
+
+    function updateWorkspaceStyleModeHelp() {
+        const mode = getWorkspaceStyleMode();
+        const help = $('#style-mode-help');
+        const structured = $('#structured-prompt-enabled');
+        if (!help) return;
+        const descriptions = {
+            legacy: '沿用当前范例文章拼接逻辑，不改变任何原有行为。',
+            smart: '使用有效 Style Card 和少量代表性范例；缺少风格卡时自动回退原文拼接。',
+            off: '本次生成不发送任何“范例文章/参考风格”模板。',
+        };
+        help.textContent = descriptions[mode];
+        if (structured) {
+            structured.disabled = mode === 'smart';
+            structured.closest('.switch-label').title = mode === 'smart'
+                ? '智能风格链会自动使用结构化消息'
+                : '关闭时完整使用原有字符串拼装格式';
+        }
+        const sceneControl = $('#style-scene-control');
+        if (sceneControl) sceneControl.style.display = mode === 'smart' ? '' : 'none';
     }
 
     function updateWorkspaceStyleStrengthHelp() {
@@ -509,6 +537,26 @@
 
     // ==================== 提示词预览 ====================
 
+    function setPromptPreviewDrawer(open) {
+        const drawer = $('#prompt-preview-drawer');
+        const toggle = $('#btn-toggle-preview-drawer');
+        if (!drawer || !toggle) return;
+        drawer.classList.toggle('is-open', open);
+        drawer.setAttribute('aria-expanded', String(open));
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.title = open ? '收起提示词预览' : '展开提示词预览';
+    }
+
+    safeBind('#btn-toggle-preview-drawer', 'click', () => {
+        setPromptPreviewDrawer(!$('#prompt-preview-drawer').classList.contains('is-open'));
+    });
+    safeBind('#btn-collapse-preview-drawer', 'click', () => setPromptPreviewDrawer(false));
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && $('#prompt-preview-drawer')?.classList.contains('is-open')) {
+            setPromptPreviewDrawer(false);
+        }
+    });
+
     function buildPromptPreviewPayload() {
         return {
             variable_values: getVariableValues(),
@@ -522,6 +570,8 @@
             thinking_enabled: $('#thinking-enabled').checked,
             reasoning_effort: 'high',
             structured_prompt_enabled: $('#structured-prompt-enabled').checked,
+            style_mode: getWorkspaceStyleMode(),
+            scene_type: $('#style-scene-type')?.value || 'auto',
         };
     }
 
@@ -548,6 +598,31 @@
         panel.style.display = '';
     }
 
+    function renderStyleSelection(metadata, styleMode) {
+        const panel = $('#style-selection-panel');
+        if (!panel) return;
+        if (!metadata || !String(styleMode || '').startsWith('smart')) {
+            panel.style.display = 'none';
+            return;
+        }
+        const sceneLabels = {
+            dialogue: '对话', action: '动作', psychology: '心理', environment: '环境',
+            transition: '转场', narration: '叙事', mixed: '综合',
+        };
+        const excerpts = metadata.selected_excerpts || [];
+        const modeText = metadata.selection_mode === 'scene_retrieval'
+            ? `已按“${sceneLabels[metadata.resolved_scene_type] || '综合'}”场景检索`
+            : '片段库尚未建立，暂用代表性开头';
+        const cards = excerpts.map(item => `
+            <div class="style-selection-item">
+                <div><strong>${escapeHtml(item.template_name)}</strong><span>${sceneLabels[item.scene_type] || item.scene_type} · ${item.pace} · ${item.char_count} 字</span></div>
+                <small>评分 ${item.score} · ${escapeHtml((item.reasons || []).join('、') || '综合匹配')}</small>
+            </div>
+        `).join('');
+        panel.innerHTML = `<div class="style-selection-heading"><strong>本次风格片段</strong><span>${modeText}</span></div>${cards}`;
+        panel.style.display = '';
+    }
+
     async function fetchPromptPreview() {
         return api('/api/generation/preview-prompt', {
             method: 'POST',
@@ -565,9 +640,16 @@
             $('#prompt-preview-content').textContent = previewData.data.assembled_prompt;
             $('#prompt-preview-content').style.display = '';
             $('#prompt-preview-meta').style.display = '';
+            const promptModeLabels = {
+                legacy: '兼容字符串', structured: '结构化消息', 'smart-style': '智能风格链',
+            };
+            const fallback = previewData.data.style_mode === 'smart_fallback_legacy'
+                ? ` · 已回退：${previewData.data.style_metadata?.fallback_reason || 'Style Card 不可用'}`
+                : '';
             $('#prompt-preview-meta').textContent =
-                `${previewData.data.prompt_mode === 'structured' ? '结构化消息' : '兼容字符串'} · ${previewData.data.message_count} 条消息 · ${previewData.data.template_count} 个模板 · ${previewData.data.char_count.toLocaleString()} 字符 · Token 为保守估算`;
+                `${promptModeLabels[previewData.data.prompt_mode] || previewData.data.prompt_mode} · ${previewData.data.message_count} 条消息 · ${previewData.data.template_count} 个模板 · ${previewData.data.char_count.toLocaleString()} 字符${fallback} · Token 为保守估算`;
             renderTokenBudget(previewData.data.token_budget);
+            renderStyleSelection(previewData.data.style_metadata, previewData.data.style_mode);
             $('#btn-close-preview').style.display = '';
             toast(`提示词共 ${previewData.data.char_count} 字符，使用 ${previewData.data.template_count} 个模板`);
         } catch (e) {
@@ -580,6 +662,7 @@
         $('#prompt-preview-content').style.display = 'none';
         $('#prompt-preview-meta').style.display = 'none';
         $('#token-budget-panel').style.display = 'none';
+        $('#style-selection-panel').style.display = 'none';
         $('#prompt-preview-empty').style.display = '';
         $('#btn-close-preview').style.display = 'none';
     });
@@ -641,7 +724,10 @@
         }
 
         state.isGenerating = true;
+        state.resultReady = false;
         state.generationController = new AbortController();
+        $('#btn-open-result-editor').disabled = true;
+        $('#btn-open-result-editor').title = '文章完整生成后才可编辑';
 
         // 重置显示区域，准备接收流式内容
         $('#result-section').style.display = '';
@@ -665,6 +751,9 @@
             await generateStream(
                 apiKey, templateIds, deaiEnabled, state.generationController.signal
             );
+            state.resultReady = true;
+            $('#btn-open-result-editor').disabled = false;
+            $('#btn-open-result-editor').title = '进入全屏编辑';
         } catch (e) {
             $('#loading-overlay').style.display = 'none';
             if (e.name === 'AbortError') {
@@ -711,6 +800,8 @@
                 template_ids: templateIds,
                 style_strength: getWorkspaceStyleStrength(),
                 structured_prompt_enabled: $('#structured-prompt-enabled').checked,
+                style_mode: getWorkspaceStyleMode(),
+                scene_type: $('#style-scene-type')?.value || 'auto',
             }),
         });
 
@@ -840,6 +931,9 @@
 
         // 保存记录ID
         state.currentRecordId = response.record?.id;
+        state.resultReady = true;
+        $('#btn-open-result-editor').disabled = false;
+        $('#btn-open-result-editor').title = '进入全屏编辑';
 
         section.scrollIntoView({ behavior: 'smooth' });
     }
@@ -910,6 +1004,10 @@
             toast('请等待生成结束或先停止生成', 'warning');
             return;
         }
+        if (!state.resultReady) {
+            toast('文章尚未完整生成，暂不能进入编辑', 'warning');
+            return;
+        }
         let base = getArticleText($('#deai-content')) || getArticleText($('#first-content'));
         let edited = '';
         let history = [];
@@ -937,7 +1035,8 @@
         $('#result-selection-status').textContent = '请在左侧选中需要处理的文字';
         $('#btn-result-transform').disabled = true;
         $('#result-comparison-overlay').style.display = 'none';
-        $('#result-editor-panel').style.display = 'flex';
+        // 该面板本身是三行 CSS Grid；使用 flex 会破坏标题栏、工具栏和正文区的排版。
+        $('#result-editor-panel').style.display = 'grid';
         document.body.classList.add('result-editor-open');
         renderResultMarkdown();
         setResultEditorDirty(false);
@@ -1281,9 +1380,271 @@
     function closeTemplateEditor() {
         $('#template-editor-panel').style.display = 'none';
         $('#version-history-panel').style.display = 'none';
+        $('#style-card-panel').style.display = 'none';
         document.body.classList.remove('template-editor-open');
         state.editingTemplateId = null;
+        state.currentStyleCard = null;
     }
+
+    function updateStyleCardVisibility() {
+        const isExample = $('#edit-template-category').value === 'example';
+        $('#btn-open-style-card').style.display = isExample ? '' : 'none';
+        if (!isExample) $('#style-card-panel').style.display = 'none';
+    }
+
+    function linesToList(value) {
+        return String(value || '').split('\n').map(item => item.trim()).filter(Boolean);
+    }
+
+    function renderStyleCardProfile(profile) {
+        state.currentStyleCard = profile?.card || null;
+        const hasCard = Boolean(profile?.card);
+        const statusLabels = {
+            missing: '尚未分析', analyzing: '正在分析', ready: '可用于智能风格链', error: '分析失败',
+        };
+        $('#style-card-status').textContent = statusLabels[profile?.analysis_status] || '尚未分析';
+        $('#style-card-empty').style.display = hasCard ? 'none' : '';
+        $('#style-card-editor').style.display = hasCard ? '' : 'none';
+        $('#style-excerpt-section').style.display = hasCard ? '' : 'none';
+        $('#btn-save-style-card').style.display = hasCard ? '' : 'none';
+        $('#btn-refresh-style-card').style.display = hasCard ? '' : 'none';
+        $('#btn-restore-style-card').style.display = hasCard ? '' : 'none';
+        $('#btn-analyze-style-card').textContent = profile?.analysis_status === 'error' ? '重新分析' : '分析当前范例';
+        if (!hasCard) {
+            if (profile?.error_message) $('#style-card-status').textContent = `分析失败：${profile.error_message}`;
+            return;
+        }
+        const card = profile.card;
+        $('#style-card-primary').checked = Boolean(profile.is_primary);
+        $('#style-card-summary').value = card.summary || '';
+        $('#style-card-person').value = card.narration?.person || '';
+        $('#style-card-distance').value = card.narration?.distance || '';
+        $('#style-card-rhythm').value = card.rhythm?.sentence_pattern || '';
+        $('#style-card-register').value = card.language?.register || '';
+        $('#style-card-behaviors').value = (card.language?.preferred_behaviors || []).join('\n');
+        $('#style-card-avoid').value = (card.avoid || []).join('\n');
+        $('#style-card-rules').value = (card.checkable_rules || []).map(rule =>
+            `${rule.priority || 'medium'}|${rule.rule || ''}`
+        ).join('\n');
+        $('#style-card-json').value = JSON.stringify(card, null, 2);
+        const notice = [];
+        if (profile.is_stale) notice.push('模板正文已变化，这张风格卡需要重新分析。');
+        if (profile.is_primary) notice.push('当前为主风格模板。');
+        notice.push(`分析模型：${profile.analysis_model || '未知'}`);
+        $('#style-card-notice').textContent = notice.join(' ');
+        $('#style-card-notice').classList.toggle('warning', Boolean(profile.is_stale));
+    }
+
+    function cardFromStyleForm() {
+        const card = JSON.parse(JSON.stringify(state.currentStyleCard || {}));
+        card.schema_version = 1;
+        card.summary = $('#style-card-summary').value.trim();
+        card.narration = card.narration || {};
+        card.narration.person = $('#style-card-person').value.trim();
+        card.narration.distance = $('#style-card-distance').value.trim();
+        card.rhythm = card.rhythm || {};
+        card.rhythm.sentence_pattern = $('#style-card-rhythm').value.trim();
+        card.language = card.language || {};
+        card.language.register = $('#style-card-register').value.trim();
+        card.language.preferred_behaviors = linesToList($('#style-card-behaviors').value);
+        card.dialogue = card.dialogue || {};
+        card.avoid = linesToList($('#style-card-avoid').value);
+        card.checkable_rules = linesToList($('#style-card-rules').value).map((line, index) => {
+            const separator = line.indexOf('|');
+            const possiblePriority = separator >= 0 ? line.slice(0, separator).trim() : 'medium';
+            const priority = ['hard', 'high', 'medium'].includes(possiblePriority) ? possiblePriority : 'medium';
+            const rule = separator >= 0 ? line.slice(separator + 1).trim() : line;
+            return { id: `rule_${String(index + 1).padStart(2, '0')}`, rule, priority };
+        });
+        return card;
+    }
+
+    async function loadStyleProfile() {
+        const id = $('#edit-template-id').value;
+        if (!id) {
+            renderStyleCardProfile({ analysis_status: 'missing', card: null });
+            return;
+        }
+        try {
+            const data = await api(`/api/style-profiles/${id}`);
+            renderStyleCardProfile(data.data);
+            if (data.data.card) await loadStyleExcerpts();
+        } catch (error) {
+            renderStyleCardProfile({ analysis_status: 'error', error_message: error.message, card: null });
+        }
+    }
+
+    function renderStyleExcerpts(excerpts) {
+        const list = $('#style-excerpt-list');
+        const summary = $('#style-excerpt-summary');
+        const sceneLabels = {
+            dialogue: '对话', action: '动作', psychology: '心理', environment: '环境',
+            transition: '转场', narration: '叙事', mixed: '综合',
+        };
+        const enabledCount = excerpts.filter(item => item.is_enabled).length;
+        const pinnedCount = excerpts.filter(item => item.is_pinned).length;
+        summary.textContent = excerpts.length
+            ? `${excerpts.length} 个片段 · ${enabledCount} 个启用${pinnedCount ? ` · ${pinnedCount} 个置顶` : ''}`
+            : '尚未生成片段';
+        if (!excerpts.length) {
+            list.innerHTML = '<div class="style-excerpt-empty">生成片段后，智能风格链会按当前场景选择最相关的范例。</div>';
+            return;
+        }
+        list.innerHTML = excerpts.map(item => `
+            <article class="style-excerpt-item ${item.is_enabled ? '' : 'disabled'}" data-id="${item.id}">
+                <div class="style-excerpt-item-head">
+                    <select class="excerpt-scene-select" data-field="scene_type" aria-label="片段场景类型">
+                        ${Object.entries(sceneLabels).map(([value, label]) =>
+                            `<option value="${value}" ${item.scene_type === value ? 'selected' : ''}>${label}</option>`
+                        ).join('')}
+                    </select>
+                    <span>${item.char_count} 字 · 对话 ${Math.round((item.dialogue_ratio || 0) * 100)}% · ${item.pace}</span>
+                    <button class="excerpt-pin ${item.is_pinned ? 'active' : ''}" data-action="pin" type="button">${item.is_pinned ? '★ 已置顶' : '☆ 置顶'}</button>
+                    <button class="excerpt-enable ${item.is_enabled ? 'active' : ''}" data-action="enable" type="button">${item.is_enabled ? '启用' : '已排除'}</button>
+                </div>
+                <p>${escapeHtml(item.content.slice(0, 260))}${item.content.length > 260 ? '…' : ''}</p>
+                <div class="style-excerpt-tags">${(item.tags || []).map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>
+            </article>
+        `).join('');
+        $$('.style-excerpt-item', list).forEach(item => {
+            const id = item.dataset.id;
+            const source = excerpts.find(excerpt => String(excerpt.id) === String(id));
+            $('.excerpt-scene-select', item).addEventListener('change', event => {
+                updateExcerpt(id, { scene_type: event.target.value });
+            });
+            $('[data-action="pin"]', item).addEventListener('click', () => {
+                updateExcerpt(id, { is_pinned: !source.is_pinned });
+            });
+            $('[data-action="enable"]', item).addEventListener('click', () => {
+                updateExcerpt(id, { is_enabled: !source.is_enabled });
+            });
+        });
+    }
+
+    async function loadStyleExcerpts() {
+        const id = $('#edit-template-id').value;
+        if (!id) return renderStyleExcerpts([]);
+        try {
+            const data = await api(`/api/style-profiles/${id}/excerpts`);
+            renderStyleExcerpts(data.data || []);
+        } catch (error) {
+            $('#style-excerpt-summary').textContent = '片段加载失败';
+            $('#style-excerpt-list').innerHTML = `<div class="style-excerpt-empty">${escapeHtml(error.message)}</div>`;
+        }
+    }
+
+    async function updateExcerpt(excerptId, payload) {
+        const templateId = $('#edit-template-id').value;
+        try {
+            await api(`/api/style-profiles/${templateId}/excerpts/${excerptId}`, {
+                method: 'PUT', body: JSON.stringify(payload),
+            });
+            await loadStyleExcerpts();
+        } catch (error) {
+            toast('更新片段失败：' + error.message, 'error');
+        }
+    }
+
+    async function rebuildCurrentStyleExcerpts() {
+        const templateId = $('#edit-template-id').value;
+        const apiKey = $('#api-key-input').value.trim();
+        if (!templateId) { toast('请先保存范例模板', 'warning'); return; }
+        if (!apiKey) { toast('请先在顶部输入 API 密钥', 'warning'); return; }
+        const button = $('#btn-rebuild-style-excerpts');
+        button.disabled = true;
+        button.textContent = '正在切分与标注…';
+        try {
+            const data = await api(`/api/style-profiles/${templateId}/excerpts/rebuild`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    api_key: apiKey,
+                    provider: $('#provider-select').value,
+                    model: $('#model-select').value,
+                }),
+            });
+            renderStyleExcerpts(data.data || []);
+            toast(`已生成 ${data.data.length} 个参考片段`, 'success');
+        } catch (error) {
+            toast('生成参考片段失败：' + error.message, 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = '重新生成片段';
+        }
+    }
+
+    async function analyzeCurrentStyleCard() {
+        const id = $('#edit-template-id').value;
+        if (!id) { toast('请先保存范例模板', 'warning'); return; }
+        const apiKey = $('#api-key-input').value.trim();
+        if (!apiKey) { toast('请先在顶部输入 API 密钥', 'warning'); return; }
+        const buttons = [$('#btn-analyze-style-card'), $('#btn-refresh-style-card')];
+        buttons.forEach(button => { button.disabled = true; });
+        $('#style-card-status').textContent = '正在分析语言风格…';
+        try {
+            const data = await api(`/api/style-profiles/${id}/analyze`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    api_key: apiKey,
+                    provider: $('#provider-select').value,
+                    model: $('#model-select').value,
+                }),
+            });
+            renderStyleCardProfile(data.data);
+            await loadStyleExcerpts();
+            toast('Style Card 分析完成', 'success');
+        } catch (error) {
+            toast('风格分析失败：' + error.message, 'error');
+            await loadStyleProfile();
+        } finally {
+            buttons.forEach(button => { button.disabled = false; });
+        }
+    }
+
+    safeBind('#edit-template-category', 'change', updateStyleCardVisibility);
+    safeBind('#btn-open-style-card', 'click', async () => {
+        $('#style-card-panel').style.display = 'grid';
+        await loadStyleProfile();
+    });
+    safeBind('#btn-close-style-card', 'click', () => { $('#style-card-panel').style.display = 'none'; });
+    safeBind('#btn-analyze-style-card', 'click', analyzeCurrentStyleCard);
+    safeBind('#btn-refresh-style-card', 'click', analyzeCurrentStyleCard);
+    safeBind('#btn-rebuild-style-excerpts', 'click', rebuildCurrentStyleExcerpts);
+    safeBind('#btn-apply-style-json', 'click', () => {
+        try {
+            const card = JSON.parse($('#style-card-json').value);
+            renderStyleCardProfile({
+                analysis_status: 'ready', card, is_primary: $('#style-card-primary').checked,
+                analysis_model: '手动编辑', is_stale: false,
+            });
+            toast('已将 JSON 应用到表单');
+        } catch (error) {
+            toast('JSON 格式错误：' + error.message, 'error');
+        }
+    });
+    safeBind('#btn-save-style-card', 'click', async () => {
+        const id = $('#edit-template-id').value;
+        try {
+            const card = cardFromStyleForm();
+            const data = await api(`/api/style-profiles/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ card, is_primary: $('#style-card-primary').checked }),
+            });
+            renderStyleCardProfile(data.data);
+            toast('Style Card 已保存', 'success');
+        } catch (error) {
+            toast('保存风格卡失败：' + error.message, 'error');
+        }
+    });
+    safeBind('#btn-restore-style-card', 'click', async () => {
+        const id = $('#edit-template-id').value;
+        try {
+            const data = await api(`/api/style-profiles/${id}/restore`, { method: 'POST' });
+            renderStyleCardProfile(data.data);
+            toast('已恢复自动分析结果');
+        } catch (error) {
+            toast('恢复失败：' + error.message, 'error');
+        }
+    });
 
     function renderMarkdownPreview() {
         const source = $('#edit-template-content').value;
@@ -1358,8 +1719,9 @@
             $('#edit-template-desc').value = '';
             $('#edit-template-content').value = '';
             renderMarkdownPreview();
-            state.editingTemplateId = null;
-        } else {
+                state.editingTemplateId = null;
+                updateStyleCardVisibility();
+            } else {
             // 编辑
             try {
                 const data = await api(`/api/templates/${templateId}`);
@@ -1372,6 +1734,7 @@
                 $('#edit-template-content').value = tpl.content;
                 renderMarkdownPreview();
                 state.editingTemplateId = tpl.id;
+                updateStyleCardVisibility();
             } catch (e) {
                 toast('加载模板失败: ' + e.message, 'error');
                 closeTemplateEditor();
@@ -1415,6 +1778,8 @@
             $('#edit-template-id').value = result.data.id;
             state.editingTemplateId = result.data.id;
             $('#editor-title').textContent = `编辑模板 - ${result.data.name} (v${result.data.version})`;
+            updateStyleCardVisibility();
+            if ($('#style-card-panel').style.display !== 'none') await loadStyleProfile();
 
             loadTemplatesList();
         } catch (e) {
@@ -1641,6 +2006,7 @@
         });
         draft.variableValues = {};
         draft.styleStrength = getWorkspaceStyleStrength();
+        draft.styleMode = getWorkspaceStyleMode();
         $$('.var-input').forEach(input => {
             draft.variableValues[input.dataset.var] = getEditableValue(input);
         });
@@ -1659,9 +2025,19 @@
             const strength = draft.styleStrength || 'light';
             const strengthInput = $(`input[name="workspace-style-strength"][value="${strength}"]`);
             if (strengthInput) strengthInput.checked = true;
+            const styleMode = draft.styleMode || 'legacy';
+            const modeInput = $(`input[name="workspace-style-mode"][value="${styleMode}"]`);
+            if (modeInput) modeInput.checked = true;
             updateWorkspaceStyleStrengthHelp();
+            updateWorkspaceStyleModeHelp();
             $$('input[name="workspace-style-strength"]').forEach(input => {
                 input.addEventListener('change', updateWorkspaceStyleStrengthHelp);
+            });
+            $$('input[name="workspace-style-mode"]').forEach(input => {
+                input.addEventListener('change', () => {
+                    updateWorkspaceStyleModeHelp();
+                    saveWorkspaceDraft();
+                });
             });
             document.addEventListener('input', event => {
                 if (event.target.matches('input, textarea, select')) saveWorkspaceDraft();
