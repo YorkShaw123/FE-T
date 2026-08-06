@@ -19,9 +19,3 @@ Thumbs.db
 
 # Environment variables
 .env
-
-# 应用数据（数据库等本地数据不上传）
-data/
-
-# Trae IDE 配置与技能
-.trae/

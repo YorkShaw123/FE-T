@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "@user_6cc7d052/code-reviewer": {
+      "name": "代码审查",
+      "zip_url": "https://api.skillhub.cn/api/v1/download?slug=code-reviewer&namespace=user_6cc7d052",
+      "source": "community",
+      "version": "1.0.1",
+      "namespace": {
+        "canonicalName": "@user_6cc7d052/code-reviewer",
+        "displayName": "user_6cc7d052",
+        "handle": "user_6cc7d052",
+        "publicSlug": "code-reviewer"
+      },
+      "internalSlug": "code-reviewer",
+      "publicSlug": "code-reviewer",
+      "installDir": "D:\\Forestar_Editior2\\.trae\\skills\\@user_6cc7d052\\code-reviewer"
+    }
+  }
+}
