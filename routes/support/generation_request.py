@@ -70,11 +70,13 @@ class GenerationRequest:
 
     def load_templates(self):
         if not self.template_ids:
-            return PromptTemplate.query.filter_by(is_active=True).all()
+            return PromptTemplate.query.filter_by(
+                is_active=True, is_sample=False
+            ).all()
         templates = []
         for template_id in self.template_ids:
             template = db.session.get(PromptTemplate, template_id)
-            if template is not None:
+            if template is not None and not template.is_sample:
                 templates.append(template)
         return templates
 

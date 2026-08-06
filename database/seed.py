@@ -26,6 +26,7 @@ SEED_TEMPLATES = [
             '与其他人物的关系：{{人物关系}}'
         ),
         'description': '定义主角的基本信息、性格和能力',
+        'is_sample': True,
     },
     {
         'name': '配角设定模板',
@@ -39,6 +40,7 @@ SEED_TEMPLATES = [
             '背景故事简述：{{配角背景}}'
         ),
         'description': '快速定义配角的基本信息',
+        'is_sample': True,
     },
 
     # ===== 背景设定 =====
@@ -55,6 +57,7 @@ SEED_TEMPLATES = [
             '当前社会矛盾/冲突：{{社会矛盾}}'
         ),
         'description': '建立小说的世界观基础框架',
+        'is_sample': True,
     },
     {
         'name': '故事发生场景',
@@ -66,6 +69,7 @@ SEED_TEMPLATES = [
             '场景与主线关联：{{场景关联}}'
         ),
         'description': '描述故事发生的具体场景环境',
+        'is_sample': True,
     },
 
     # ===== 剧情设定 =====
@@ -82,6 +86,7 @@ SEED_TEMPLATES = [
             '本章结尾状态（悬念/转折/收束）：{{结尾状态}}'
         ),
         'description': '规划单章的叙事框架和要点',
+        'is_sample': True,
     },
     {
         'name': '主线剧情概要',
@@ -98,6 +103,7 @@ SEED_TEMPLATES = [
             '主题/立意：{{故事主题}}'
         ),
         'description': '定义整个故事的主线剧情框架',
+        'is_sample': True,
     },
 
     # ===== 范例文章 =====
@@ -152,6 +158,7 @@ SEED_TEMPLATES = [
             '8. 输出字数不少于{{最低字数}}字'
         ),
         'description': '通用的写作质量标准和约束条件',
+        'is_sample': True,
     },
     {
         'name': '叙事节奏控制',
@@ -166,6 +173,7 @@ SEED_TEMPLATES = [
             '6. 本章应集中描写不超过{{核心事件数}}个核心事件'
         ),
         'description': '控制文章叙事节奏和密度的约束条件',
+        'is_sample': True,
     },
 ]
 
@@ -195,6 +203,7 @@ def seed_templates(force=False):
                 content=tpl['content'],
                 description=tpl.get('description', ''),
                 sort_order=0,
+                is_sample=tpl.get('is_sample', False),
             )
             created += 1
         except Exception as e:

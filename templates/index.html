@@ -78,19 +78,6 @@
                     <div class="panel-right-inner">
                         <!-- 左列：配置区域 -->
                         <div class="config-column">
-                            <!-- 变量值填写 -->
-                            <div class="panel-section" id="variables-section">
-                                <button id="btn-open-variables" class="variable-launcher" type="button">
-                                    <span class="variable-launcher-icon">✏️</span>
-                                    <span class="variable-launcher-copy">
-                                        <strong>模板变量填写</strong>
-                                        <small id="variables-summary">点击打开变量填写窗口</small>
-                                    </span>
-                                    <span class="variable-launcher-arrow">›</span>
-                                </button>
-                                <div id="variables-container" hidden></div>
-                            </div>
-
                             <!-- 提示词编排模式 -->
                             <div class="panel-section prompt-mode-section">
                                 <div class="section-header">
@@ -312,7 +299,6 @@
                         <button id="btn-new-template" class="btn btn-primary btn-block">+ 新建模板</button>
                         <button id="btn-import-templates" class="btn btn-outline btn-block">📥 导入模板</button>
                         <button id="btn-export-templates" class="btn btn-outline btn-block">📤 导出模板</button>
-                        <button id="btn-delete-all-templates" class="btn btn-danger btn-block">🗑️ 删除所有模板</button>
                     </div>
                 </div>
                 <div class="template-list" id="template-list">
@@ -325,6 +311,7 @@
                         <div class="editor-header-actions">
                             <button id="btn-open-style-card" class="btn btn-outline" type="button" style="display:none;">风格卡</button>
                             <button id="btn-version-history" class="btn btn-outline">版本历史</button>
+                            <button id="btn-save-as-template" class="btn btn-primary" type="button" style="display:none;">另存为模板</button>
                             <button id="btn-save-template" class="btn btn-primary">保存模板</button>
                         </div>
                     </div>
@@ -340,8 +327,12 @@
                                 <option value="constraint">更多约束</option>
                             </select>
                             <input type="text" id="edit-template-desc" class="input-text" placeholder="添加模板描述（可选）">
+                            <label class="switch-label" id="edit-template-is-sample-label" style="display:none;">
+                                <input type="checkbox" id="edit-template-is-sample"> 设为示例模板
+                            </label>
                             <button id="btn-delete-template" class="btn btn-danger">删除</button>
                         </div>
+                        <div id="sample-template-tabs" class="sample-template-tabs" style="display:none;"></div>
                         <div class="markdown-toolbar" aria-label="Markdown 工具栏">
                             <button type="button" data-md-prefix="# " title="一级标题">H1</button>
                             <button type="button" data-md-prefix="## " title="二级标题">H2</button>
@@ -361,6 +352,9 @@
                             <div class="markdown-preview-pane" id="markdown-preview">
                                 <div class="markdown-preview-empty">Markdown 预览会显示在这里</div>
                             </div>
+                        </div>
+                        <div id="sample-variables-panel" class="sample-variables-panel" style="display:none;">
+                            <div class="sample-variables-list" id="sample-variables-list"></div>
                         </div>
                     </div>
                     <!-- 范例文章专用 Style Card 编辑面板 -->
@@ -522,25 +516,6 @@
 
     <!-- Toast通知 -->
     <div id="toast-container" class="toast-container"></div>
-
-    <!-- 模板变量弹窗 -->
-    <div id="variables-modal" class="modal-backdrop" hidden>
-        <div class="variables-modal" role="dialog" aria-modal="true" aria-labelledby="variables-modal-title">
-            <div class="modal-header">
-                <div>
-                    <h2 id="variables-modal-title">模板变量填写</h2>
-                    <p>切换模板，在完整原文中直接填写高亮位置。</p>
-                </div>
-                <button id="btn-close-variables" class="btn-icon" type="button" aria-label="关闭">✕</button>
-            </div>
-            <div id="variables-template-tabs" class="variables-template-tabs"></div>
-            <div id="variables-modal-content" class="variables-modal-content"></div>
-            <div class="modal-footer">
-                <span id="variables-filled-count" class="hint-text"></span>
-                <button id="btn-done-variables" class="btn btn-primary" type="button">完成填写</button>
-            </div>
-        </div>
-    </div>
 
     <!-- 导入文件选择器（隐藏） -->
     <input type="file" id="import-file-input" accept=".json" style="display:none;">

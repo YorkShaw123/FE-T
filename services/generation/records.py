@@ -11,7 +11,7 @@ def get_record(record_id):
 
 def get_records(page=1, per_page=20):
     pagination = GenerationRecord.query.order_by(
-        GenerationRecord.is_pinned.desc(),
+        GenerationRecord.pinned.desc(),
         GenerationRecord.created_at.desc(),
     ).paginate(page=page, per_page=per_page, error_out=False)
     return {
@@ -42,6 +42,6 @@ def delete_record(record_id):
 
 
 def delete_all_records():
-    count = GenerationRecord.query.delete()
+    """删除所有生成记录"""
+    GenerationRecord.query.delete()
     db.session.commit()
-    return count

@@ -10,11 +10,11 @@ from services.generation_service import (
     get_records,
     update_record,
     delete_record,
-    delete_all_records,
     get_assembled_preview,
     transform_article_text,
     GenerationError,
 )
+from services.generation.records import delete_all_records
 from config import Config
 from routes.support.document_text import extract_uploaded_text
 from routes.support.generation_request import GenerationRequest
@@ -265,7 +265,7 @@ def remove_record(record_id):
 def remove_all_records():
     """删除所有生成记录"""
     try:
-        count = delete_all_records()
-        return jsonify({'success': True, 'deleted': count})
-    except GenerationError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        delete_all_records()
+        return jsonify({'success': True, 'deleted': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

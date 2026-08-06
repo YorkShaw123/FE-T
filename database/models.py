@@ -30,6 +30,8 @@ class PromptTemplate(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     # 风格参考强度，仅对 example 分类生效：light / medium / strict
     style_strength = db.Column(db.String(20), nullable=False, default='light')
+    # 是否为示例模板（模板变量填写专用，不参与生成）
+    is_sample = db.Column(db.Boolean, nullable=False, default=False)
     # 排序权重
     sort_order = db.Column(db.Integer, default=0)
     # 版本控制字段
@@ -58,6 +60,7 @@ class PromptTemplate(db.Model):
             'variables': self.variables,
             'is_active': self.is_active,
             'style_strength': self.style_strength or 'light',
+            'is_sample': self.is_sample,
             'sort_order': self.sort_order,
             'version': self.version,
             'parent_id': self.parent_id,
@@ -216,6 +219,8 @@ class GenerationRecord(db.Model):
     deai_prompt = db.Column(db.Text, default='')
     # 质量评分（用户手动打分）
     rating = db.Column(db.Integer, default=0)
+    # 用户置顶标记
+    pinned = db.Column(db.Boolean, default=False, nullable=False)
     # 备注
     notes = db.Column(db.Text, default='')
     # API原始响应
@@ -223,8 +228,6 @@ class GenerationRecord(db.Model):
     # 风格链运行快照；旧记录默认为 legacy。
     style_mode = db.Column(db.String(30), nullable=False, default='legacy')
     style_profile_snapshot = db.Column(db.Text, default='[]')
-    # 是否置顶
-    is_pinned = db.Column(db.Boolean, nullable=False, default=False)
     # 时间戳
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -244,10 +247,10 @@ class GenerationRecord(db.Model):
             'variable_values': self.variable_values,
             'deai_prompt': self.deai_prompt,
             'rating': self.rating,
+            'pinned': self.pinned,
             'notes': self.notes,
             'style_mode': self.style_mode or 'legacy',
             'style_profile_snapshot': self.style_profile_snapshot or '[]',
-            'is_pinned': self.is_pinned,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -259,10 +262,10 @@ class GenerationRecord(db.Model):
             'model_used': self.model_used,
             'thinking_enabled': self.thinking_enabled,
             'rating': self.rating,
+            'pinned': self.pinned,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'has_deai': bool(self.deai_content),
             'has_edited': bool(self.edited_content),
-            'is_pinned': self.is_pinned,
             'content_preview': (self.deai_content or self.content)[:200] + '...' if len(self.deai_content or self.content) > 200 else (self.deai_content or self.content),
         }
 

@@ -34,6 +34,7 @@
         theme: localStorage.getItem('forestar_theme') || 'dark',
         templates: [],
         groupedTemplates: {},
+        sampleTemplates: [],
         currentTab: 'workspace',
         templateFilterCategory: 'all',
         editingTemplateId: null,
@@ -77,9 +78,10 @@
         };
         help.textContent = descriptions[mode];
         if (structured) {
-            structured.disabled = mode === 'smart';
+            // 智能风格链推荐开启结构化消息，但仍允许用户手动控制
+            structured.disabled = false;
             structured.closest('.switch-label').title = mode === 'smart'
-                ? '智能风格链会自动使用结构化消息'
+                ? '智能风格链推荐开启结构化消息，你仍可手动切换'
                 : '关闭时完整使用原有字符串拼装格式';
         }
         const sceneControl = $('#style-scene-control');
@@ -207,7 +209,6 @@
                 Object.fromEntries(Object.entries(data.data).map(([k, v]) => [k, v.length])));
             state.groupedTemplates = data.data;
             renderWorkspaceTemplates(data.data);
-            updateVariablesPanel();
         } catch (e) {
             console.error('[Forestar] 加载模板失败:', e);
             container.innerHTML = `<div style="padding:20px;text-align:center;">
@@ -231,22 +232,23 @@
         let totalCount = 0;
 
         for (const [catId, templates] of Object.entries(grouped)) {
-            if (!templates || templates.length === 0) continue;
-            totalCount += templates.length;
+            const visible = (templates || []).filter(tpl => !tpl.is_sample);
+            if (visible.length === 0) continue;
+            totalCount += visible.length;
             const cfg = categoryConfig[catId] || { icon: '📄', name: catId };
-            const activeCount = templates.filter(t => t.is_active !== false).length;
+            const activeCount = visible.filter(t => t.is_active !== false).length;
 
             html += `<div class="template-category-group">`;
             html += `<div class="category-group-header" data-cat="${catId}">
                 <span class="collapse-icon">▼</span>
                 <span>${cfg.icon} ${cfg.name}</span>
                 <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">
-                    ${activeCount}/${templates.length} 启用
+                    ${activeCount}/${visible.length} 启用
                 </span>
             </div>`;
             html += `<div class="category-templates">`;
 
-            templates.forEach(tpl => {
+            visible.forEach(tpl => {
                 const active = tpl.is_active !== false;
                 const preview = (tpl.content || '').replace(/\{\{.*?\}\}/g, '___').substring(0, 40);
 
@@ -262,8 +264,8 @@
 
         if (totalCount === 0) {
             html = `<div style="padding:20px;text-align:center;color:var(--text-muted);">
-                <p>暂无模板</p>
-                <p style="font-size:12px;margin-top:8px;">请切换到"模板管理"标签页创建模板</p>
+                <p>暂无可用模板</p>
+                <p style="font-size:12px;margin-top:8px;">请切换到"模板管理"标签页，从示例模板生成新模板</p>
             </div>`;
         }
 
@@ -303,7 +305,6 @@
             }
             // 重新渲染面板以更新开关状态和计数
             renderWorkspaceTemplates(state.groupedTemplates);
-            updateVariablesPanel();
         } catch (e) {
             toast('切换失败: ' + e.message, 'error');
         }
@@ -322,140 +323,6 @@
     // 刷新模板按钮
     safeBind('#btn-refresh-templates', 'click', () => {
         loadWorkspaceTemplates();
-    });
-
-    // ==================== 变量面板 ====================
-
-    function updateVariablesPanel() {
-        const content = $('#variables-modal-content');
-        const tabs = $('#variables-template-tabs');
-        const summary = $('#variables-summary');
-        const templateGroups = [];
-        const allVars = new Set();
-
-        for (const templates of Object.values(state.groupedTemplates)) {
-            for (const tpl of templates) {
-                if (tpl.is_active && tpl.variables) {
-                    try {
-                        const vars = typeof tpl.variables === 'string' ? JSON.parse(tpl.variables) : tpl.variables;
-                        if (vars.length) {
-                            templateGroups.push({ template: tpl, variables: vars });
-                            vars.forEach(v => allVars.add(v));
-                        }
-                    } catch (e) { /* ignore */ }
-                }
-            }
-        }
-
-        if (allVars.size === 0) {
-            tabs.innerHTML = '';
-            content.innerHTML = '<div class="variables-empty">当前启用的模板中没有需要填写的变量</div>';
-            summary.textContent = '当前没有待填写变量';
-            updateVariableCount();
-            return;
-        }
-
-        tabs.innerHTML = templateGroups.map(({ template }, index) =>
-            `<button type="button" class="${index === 0 ? 'active' : ''}" data-template-index="${index}">
-                ${categoryConfig[template.category]?.icon || '📄'} ${escapeHtml(template.name)}
-            </button>`
-        ).join('');
-        content.innerHTML = '';
-
-        templateGroups.forEach(({ template }, index) => {
-            const documentView = document.createElement('section');
-            documentView.className = `variable-document ${index === 0 ? 'active' : ''}`;
-            documentView.dataset.templateIndex = index;
-
-            const heading = document.createElement('div');
-            heading.className = 'variable-document-heading';
-            const title = document.createElement('strong');
-            title.textContent = template.name;
-            const meta = document.createElement('span');
-            meta.textContent = `${categoryConfig[template.category]?.name || template.category} · 高亮处可直接填写`;
-            heading.append(title, meta);
-
-            const body = document.createElement('div');
-            body.className = 'variable-document-body';
-            const source = template.content || '';
-            const variablePattern = /\{\{([^{}]+)\}\}/g;
-            let cursor = 0;
-            let match;
-            while ((match = variablePattern.exec(source)) !== null) {
-                body.appendChild(document.createTextNode(source.slice(cursor, match.index)));
-                const varName = match[1].trim();
-                const editor = document.createElement('span');
-                editor.className = 'var-input var-inline-editor';
-                editor.dataset.var = varName;
-                editor.contentEditable = 'plaintext-only';
-                editor.setAttribute('role', 'textbox');
-                editor.setAttribute('aria-label', `填写变量 ${varName}`);
-                editor.dataset.placeholder = varName;
-                editor.textContent = localStorage.getItem(`forestar_var_${varName}`) || '';
-                editor.addEventListener('keydown', event => {
-                    if (event.key === 'Enter') event.preventDefault();
-                });
-                body.appendChild(editor);
-                cursor = variablePattern.lastIndex;
-            }
-            body.appendChild(document.createTextNode(source.slice(cursor)));
-            documentView.append(heading, body);
-            content.appendChild(documentView);
-        });
-
-        $$('.variables-template-tabs button', $('#variables-modal')).forEach(tab => {
-            tab.addEventListener('click', () => {
-                $$('.variables-template-tabs button', $('#variables-modal')).forEach(item => item.classList.toggle('active', item === tab));
-                $$('.variable-document', content).forEach(item =>
-                    item.classList.toggle('active', item.dataset.templateIndex === tab.dataset.templateIndex)
-                );
-            });
-        });
-        summary.textContent = `${templateGroups.length} 个模板 · ${allVars.size} 个变量`;
-
-        // 绑定变化事件，自动保存到 localStorage
-        $$('.var-input', content).forEach(input => {
-            input.addEventListener('input', () => {
-                const value = getEditableValue(input);
-                localStorage.setItem(`forestar_var_${input.dataset.var}`, value);
-                $$('.var-input', content)
-                    .filter(other => other !== input && other.dataset.var === input.dataset.var)
-                    .forEach(other => { other.textContent = value; });
-                updateVariableCount();
-            });
-        });
-        updateVariableCount();
-    }
-
-    function getEditableValue(element) {
-        return element.isContentEditable ? element.textContent : element.value;
-    }
-
-    function updateVariableCount() {
-        const unique = new Map();
-        $$('.var-input', $('#variables-modal-content')).forEach(input =>
-            unique.set(input.dataset.var, getEditableValue(input).trim())
-        );
-        const filled = [...unique.values()].filter(Boolean).length;
-        const count = $('#variables-filled-count');
-        if (count) count.textContent = unique.size ? `已填写 ${filled}/${unique.size} 个变量` : '';
-    }
-
-    function setVariablesModal(open) {
-        const modal = $('#variables-modal');
-        modal.hidden = !open;
-        document.body.classList.toggle('modal-open', open);
-        if (open) setTimeout(() => $('.var-input', modal)?.focus(), 0);
-    }
-
-    safeBind('#btn-open-variables', 'click', () => setVariablesModal(true));
-    safeBind('#btn-close-variables', 'click', () => setVariablesModal(false));
-    safeBind('#btn-done-variables', 'click', () => setVariablesModal(false));
-    safeBind('#variables-modal', 'click', event => {
-        if (event.target.id === 'variables-modal') setVariablesModal(false);
-    });
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && !$('#variables-modal').hidden) setVariablesModal(false);
     });
 
     // ==================== 前置文章文件导入 ====================
@@ -559,7 +426,7 @@
 
     function buildPromptPreviewPayload() {
         return {
-            variable_values: getVariableValues(),
+            variable_values: {},
             previous_article: $('#previous-article').value,
             template_ids: getActiveTemplateIds(),
             style_strength: getWorkspaceStyleStrength(),
@@ -669,19 +536,11 @@
 
     // ==================== 文章生成 ====================
 
-    function getVariableValues() {
-        const values = {};
-        $$('.var-input').forEach(input => {
-            values[input.dataset.var] = getEditableValue(input);
-        });
-        return values;
-    }
-
     function getActiveTemplateIds() {
         const ids = [];
         for (const templates of Object.values(state.groupedTemplates)) {
             for (const tpl of templates) {
-                if (tpl.is_active) ids.push(tpl.id);
+                if (tpl.is_active && !tpl.is_sample) ids.push(tpl.id);
             }
         }
         return ids;
@@ -796,7 +655,7 @@
                 deai_prompt: $('#deai-prompt').value,
                 title: $('#article-title').value || '未命名',
                 previous_article: $('#previous-article').value,
-                variable_values: getVariableValues(),
+                variable_values: {},
                 template_ids: templateIds,
                 style_strength: getWorkspaceStyleStrength(),
                 structured_prompt_enabled: $('#structured-prompt-enabled').checked,
@@ -1272,18 +1131,20 @@
             <input id="template-search" class="input-text" type="search"
                 value="${escapeHtml(state.templateSearch)}" placeholder="搜索名称、说明或内容">
             <span class="list-count">${filtered.length} / ${templates.length}</span>
+            <button id="btn-delete-all-templates" class="btn btn-danger btn-sm" type="button">🗑 删除全部</button>
         </div><div id="template-list-results"></div>`;
         const results = $('#template-list-results', container);
         results.innerHTML = filtered.length ? filtered.map(tpl => {
             const active = tpl.is_active !== false;
+            const isSample = tpl.is_sample;
             const preview = tpl.content ? tpl.content.replace(/\{\{.*?\}\}/g, '___').substring(0, 60) : '';
             const vars = tpl.variables ? (typeof tpl.variables === 'string' ? JSON.parse(tpl.variables) : tpl.variables).join(', ') : '';
             const updatedAt = tpl.updated_at ? new Date(tpl.updated_at).toLocaleString('zh-CN') : '';
-            return `<div class="template-list-item ${active ? 'active' : ''}" data-id="${tpl.id}">
+            return `<div class="template-list-item ${active ? 'active' : ''} ${isSample ? 'is-sample' : ''}" data-id="${tpl.id}">
                 <span class="item-status"></span>
                 <div class="item-info">
-                    <div class="item-name">${escapeHtml(tpl.name)} <span style="font-size:11px;color:var(--text-muted)">v${tpl.version}</span></div>
-                    <div class="item-meta">${vars ? '📌 ' + escapeHtml(vars) : '无变量'} · ${updatedAt}</div>
+                    <div class="item-name">${escapeHtml(tpl.name)} <span style="font-size:11px;color:var(--text-muted)">v${tpl.version}</span>${isSample ? ' <span class="sample-badge">示例</span>' : ''}</div>
+                    <div class="item-meta">${isSample ? '✏️ 示例模板' : vars ? '📌 ' + escapeHtml(vars) : '无变量'} · ${updatedAt}</div>
                 </div>
                 <div class="item-preview">${escapeHtml(preview)}</div>
             </div>`;
@@ -1295,6 +1156,7 @@
             search.focus();
             search.setSelectionRange(search.value.length, search.value.length);
         });
+        safeBind('#btn-delete-all-templates', 'click', deleteAllTemplates);
 
         // 绑定点击事件
         $$('.template-list-item', results).forEach(item => {
@@ -1704,41 +1566,142 @@
         event.currentTarget.textContent = visible ? '隐藏预览' : '显示预览';
     });
 
+    async function loadSampleTemplates() {
+        if (state.sampleTemplates.length > 0) return;
+        try {
+            const data = await api('/api/templates/samples');
+            state.sampleTemplates = data.data;
+        } catch (e) {
+            console.error('加载示例模板失败:', e);
+            state.sampleTemplates = [];
+        }
+    }
+
+    function resetEditorUi() {
+        const content = $('#edit-template-content');
+        content.readOnly = false;
+        content.disabled = false;
+
+        $('#sample-template-tabs').style.display = 'none';
+        $('#sample-template-tabs').innerHTML = '';
+        $('#sample-variables-panel').style.display = 'none';
+        $('#sample-variables-list').innerHTML = '';
+
+        $('#btn-save-as-template').style.display = 'none';
+        $('#btn-save-template').style.display = '';
+        $('#btn-delete-template').style.display = '';
+        $('#btn-version-history').style.display = '';
+        $('#btn-open-style-card').style.display = '';
+        $('#edit-template-is-sample-label').style.display = '';
+        $('#edit-template-is-sample').checked = false;
+
+        $('.markdown-toolbar').classList.remove('sample-mode');
+    }
+
+    function enterSampleMode(tpl) {
+        resetEditorUi();
+
+        state.editingTemplateId = tpl.id;
+        $('#editor-title').textContent = `示例模板 - ${tpl.name} (v${tpl.version})`;
+        $('#edit-template-id').value = tpl.id;
+        $('#edit-template-name').value = '';
+        $('#edit-template-name').placeholder = '填写新模板名称';
+        $('#edit-template-category').value = tpl.category;
+        $('#edit-template-desc').value = tpl.description || '';
+
+        const content = $('#edit-template-content');
+        content.value = tpl.content;
+        content.readOnly = true;
+        renderMarkdownPreview();
+
+        // 示例模式下隐藏保存/删除/版本/示例开关/风格卡，显示另存为
+        $('#btn-save-template').style.display = 'none';
+        $('#btn-delete-template').style.display = 'none';
+        $('#btn-version-history').style.display = 'none';
+        $('#btn-open-style-card').style.display = 'none';
+        $('#edit-template-is-sample-label').style.display = 'none';
+        $('#btn-save-as-template').style.display = '';
+
+        // 隐藏 Markdown 工具栏的格式按钮，仅保留预览切换
+        $('.markdown-toolbar').classList.add('sample-mode');
+
+        // 渲染示例模板 tab 栏
+        const tabs = $('#sample-template-tabs');
+        tabs.style.display = '';
+        tabs.innerHTML = state.sampleTemplates.map(sample => {
+            const active = sample.id === tpl.id;
+            const cfg = categoryConfig[sample.category] || { icon: '📄' };
+            return `<button type="button" class="variables-template-tab ${active ? 'active' : ''}" data-id="${sample.id}">
+                ${cfg.icon} ${escapeHtml(sample.name)}
+            </button>`;
+        }).join('');
+        $$('.variables-template-tab', tabs).forEach(tab => {
+            tab.addEventListener('click', () => {
+                const id = parseInt(tab.dataset.id);
+                const sample = state.sampleTemplates.find(s => s.id === id);
+                if (sample) enterSampleMode(sample);
+            });
+        });
+
+        // 渲染变量大文本框
+        const list = $('#sample-variables-list');
+        const vars = tpl.variables ? (typeof tpl.variables === 'string' ? JSON.parse(tpl.variables) : tpl.variables) : [];
+        list.innerHTML = vars.length ? vars.map(v => `
+            <label class="sample-variable-item">
+                <span>${escapeHtml(v)}</span>
+                <textarea class="input-textarea" data-var="${escapeHtml(v)}" rows="4" placeholder="填写 ${escapeHtml(v)}"></textarea>
+            </label>
+        `).join('') : '<div class="variables-empty">该示例模板没有变量</div>';
+        $('#sample-variables-panel').style.display = '';
+    }
+
     async function openTemplateEditor(templateId) {
         const panel = $('#template-editor-panel');
         panel.style.display = '';
         document.body.classList.add('template-editor-open');
         $('#version-history-panel').style.display = 'none';
+        $('#style-card-panel').style.display = 'none';
 
         if (templateId === null) {
-            // 新建
+            // 新建普通模板
+            resetEditorUi();
             $('#editor-title').textContent = '新建模板';
             $('#edit-template-id').value = '';
             $('#edit-template-name').value = '';
+            $('#edit-template-name').placeholder = '无标题模板';
             $('#edit-template-category').value = currentTemplateCategory === 'all' ? 'constraint' : currentTemplateCategory;
             $('#edit-template-desc').value = '';
             $('#edit-template-content').value = '';
             renderMarkdownPreview();
-                state.editingTemplateId = null;
-                updateStyleCardVisibility();
+            state.editingTemplateId = null;
+            updateStyleCardVisibility();
+            return;
+        }
+
+        try {
+            const data = await api(`/api/templates/${templateId}`);
+            const tpl = data.data;
+
+            if (tpl.is_sample) {
+                await loadSampleTemplates();
+                enterSampleMode(tpl);
             } else {
-            // 编辑
-            try {
-                const data = await api(`/api/templates/${templateId}`);
-                const tpl = data.data;
+                resetEditorUi();
                 $('#editor-title').textContent = `编辑模板 - ${tpl.name} (v${tpl.version})`;
                 $('#edit-template-id').value = tpl.id;
                 $('#edit-template-name').value = tpl.name;
+                $('#edit-template-name').placeholder = '无标题模板';
                 $('#edit-template-category').value = tpl.category;
                 $('#edit-template-desc').value = tpl.description || '';
                 $('#edit-template-content').value = tpl.content;
+                $('#edit-template-is-sample').checked = Boolean(tpl.is_sample);
                 renderMarkdownPreview();
                 state.editingTemplateId = tpl.id;
                 updateStyleCardVisibility();
-            } catch (e) {
-                toast('加载模板失败: ' + e.message, 'error');
-                closeTemplateEditor();
             }
+        } catch (e) {
+            toast('加载模板失败: ' + e.message, 'error');
+            closeTemplateEditor();
         }
     }
 
@@ -1750,6 +1713,7 @@
             category: $('#edit-template-category').value,
             content: $('#edit-template-content').value,
             description: $('#edit-template-desc').value,
+            is_sample: $('#edit-template-is-sample').checked,
         };
 
         if (!data.name.trim()) { toast('请输入模板名称', 'warning'); return; }
@@ -1787,6 +1751,42 @@
         }
     });
 
+    // 示例模板另存为新模板
+    safeBind('#btn-save-as-template', 'click', async () => {
+        const sampleId = $('#edit-template-id').value;
+        const name = $('#edit-template-name').value.trim();
+        const category = $('#edit-template-category').value;
+        const description = $('#edit-template-desc').value;
+
+        if (!sampleId) { toast('请先选择一个示例模板', 'warning'); return; }
+        if (!name) { toast('请输入新模板名称', 'warning'); $('#edit-template-name').focus(); return; }
+
+        const variableValues = {};
+        $$('#sample-variables-list textarea[data-var]').forEach(textarea => {
+            variableValues[textarea.dataset.var] = textarea.value;
+        });
+
+        try {
+            const result = await api('/api/templates/from-sample', {
+                method: 'POST',
+                body: JSON.stringify({
+                    sample_id: parseInt(sampleId),
+                    name,
+                    category,
+                    description,
+                    variable_values: variableValues,
+                }),
+            });
+            toast('新模板已创建');
+            closeTemplateEditor();
+            loadTemplatesList();
+            // 可选：直接打开新创建的普通模板
+            // openTemplateEditor(result.data.id);
+        } catch (e) {
+            toast('保存失败: ' + e.message, 'error');
+        }
+    });
+
     // 删除模板
     safeBind('#btn-delete-template', 'click', async () => {
         const id = $('#edit-template-id').value;
@@ -1803,40 +1803,49 @@
         }
     });
 
-    // 一键删除所有模板
-    safeBind('#btn-delete-all-templates', 'click', async () => {
+    async function deleteAllTemplates() {
         if (!confirm('确定要删除所有模板吗？此操作不可撤销。')) return;
         try {
-            const result = await api('/api/templates', { method: 'DELETE' });
-            toast(`已删除 ${result.deleted} 个模板`);
+            await api('/api/templates/all', { method: 'DELETE' });
+            toast('所有模板已删除');
             closeTemplateEditor();
             loadTemplatesList();
+            loadWorkspaceTemplates();
         } catch (e) {
             toast('删除失败: ' + e.message, 'error');
         }
-    });
+    }
 
     // 版本历史
     safeBind('#btn-version-history', 'click', async () => {
         const id = $('#edit-template-id').value;
         if (!id) { toast('请先保存模板', 'warning'); return; }
 
+        const panel = $('#version-history-panel');
+        // 已打开则收起
+        if (panel.style.display !== 'none') {
+            panel.style.display = 'none';
+            return;
+        }
+
         try {
             const data = await api(`/api/templates/${id}/versions`);
-            const panel = $('#version-history-panel');
             panel.style.display = '';
 
             const list = $('#version-list');
             list.innerHTML = data.data.map(v => `
-                <div class="template-list-item ${v.is_active ? 'active' : ''}" style="cursor:default;">
-                    <div class="item-info">
-                        <div class="item-name">
-                            v${v.version}
-                            ${v.is_active ? '<span style="color:var(--accent-success);font-size:11px;"> ● 当前</span>' : ''}
+                <div class="template-list-item version-history-item ${v.is_active ? 'active' : ''}" style="cursor:default;">
+                    <span class="item-status"></span>
+                    <div class="version-item-main">
+                        <div class="version-item-info">
+                            <div class="item-name">
+                                v${v.version}
+                                ${v.is_active ? '<span style="color:var(--accent-success);font-size:11px;"> ● 当前</span>' : ''}
+                            </div>
+                            <div class="item-meta">${new Date(v.updated_at).toLocaleString('zh-CN')}</div>
                         </div>
-                        <div class="item-meta">${new Date(v.updated_at).toLocaleString('zh-CN')}</div>
+                        ${!v.is_active ? `<button class="btn btn-xs btn-outline restore-version-btn" data-vid="${v.id}">恢复</button>` : ''}
                     </div>
-                    ${!v.is_active ? `<button class="btn btn-xs btn-outline restore-version-btn" data-vid="${v.id}">恢复</button>` : ''}
                 </div>
             `).join('');
 
@@ -1877,8 +1886,7 @@
             container.innerHTML = `<div class="list-toolbar history-toolbar">
                 <input id="history-search" class="input-text" type="search"
                     placeholder="搜索标题、模型或正文摘要">
-                <span class="list-count">${records.length} 条</span>
-                <button id="btn-delete-all-records" class="btn btn-xs btn-danger" style="margin-left:auto;">🗑️ 删除全部</button>
+                <button id="btn-delete-all-records" class="btn btn-danger btn-sm" type="button">🗑 删除全部</button>
             </div><div id="history-list-results"></div>`;
             renderHistoryRecords(records);
             $('#history-search').addEventListener('input', event => {
@@ -1903,26 +1911,29 @@
             return;
         }
         container.innerHTML = records.map(r => `
-                <div class="history-item ${r.is_pinned ? 'pinned' : ''}" data-id="${r.id}">
-                    <div class="h-title" data-field="title">${escapeHtml(r.title)}</div>
-                    <div class="h-preview">${escapeHtml(r.content_preview || '')}</div>
-                    <div class="h-meta">
-                        <span>${r.model_used || '未知模型'}</span>
-                        ${r.has_deai ? '<span style="color:var(--accent-success)">已去AI味</span>' : ''}
-                        ${r.has_edited ? '<span class="history-edited-badge">有修改版</span>' : ''}
-                        <span>${new Date(r.created_at).toLocaleString('zh-CN')}</span>
-                        <span class="history-actions" onclick="event.stopPropagation();">
-                            <button data-action="rename" title="重命名">✏️</button>
-                            <button data-action="pin" class="${r.is_pinned ? 'active' : ''}" title="${r.is_pinned ? '取消置顶' : '置顶'}">${r.is_pinned ? '★' : '☆'}</button>
-                            <button data-action="delete" class="danger" title="删除">🗑️</button>
-                        </span>
+                <div class="history-item ${r.pinned ? 'pinned' : ''}" data-id="${r.id}">
+                    <div class="h-main">
+                        <div class="h-title">${escapeHtml(r.title)}</div>
+                        <div class="h-preview">${escapeHtml(r.content_preview || '')}</div>
+                        <div class="h-meta">
+                            <span>${r.model_used || '未知模型'}</span>
+                            ${r.has_deai ? '<span style="color:var(--accent-success)">已去AI味</span>' : ''}
+                            ${r.has_edited ? '<span class="history-edited-badge">有修改版</span>' : ''}
+                            <span>${new Date(r.created_at).toLocaleString('zh-CN')}</span>
+                        </div>
+                    </div>
+                    <div class="history-actions">
+                        <button type="button" class="btn-pin ${r.pinned ? 'active' : ''}" data-action="pin" title="${r.pinned ? '取消置顶' : '置顶'}">
+                            ${r.pinned ? '取消置顶' : '置顶'}
+                        </button>
+                        <button type="button" class="danger" data-action="delete" title="删除">删除</button>
                     </div>
                 </div>
             `).join('');
 
         $$('.history-item', container).forEach(item => {
-            item.addEventListener('click', event => {
-                if (event.target.closest('.history-actions') || event.target.closest('.history-rename-input')) return;
+            item.addEventListener('click', (e) => {
+                if (e.target.closest('.history-actions, [data-action]')) return;
                 const id = parseInt(item.dataset.id);
                 loadHistoryDetail(id);
                 $$('.history-item', container).forEach(i => i.classList.remove('active'));
@@ -1930,38 +1941,44 @@
             });
         });
 
-        $$('.history-actions button', container).forEach(button => {
-            button.addEventListener('click', event => {
-                event.stopPropagation();
-                const item = button.closest('.history-item');
-                const id = parseInt(item.dataset.id);
-                const action = button.dataset.action;
-                if (action === 'rename') startRenameHistoryRecord(item, id);
-                else if (action === 'pin') togglePinHistoryRecord(id, !item.classList.contains('pinned'));
-                else if (action === 'delete') deleteHistoryRecord(id);
+        $$('.history-item .btn-pin', container).forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.closest('.history-item').dataset.id);
+                toggleRecordPinned(id);
+            });
+        });
+
+        $$('.history-item .history-actions .danger', container).forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.closest('.history-item').dataset.id);
+                deleteRecord(id);
             });
         });
     }
 
-    async function togglePinHistoryRecord(id, pinned) {
+    async function toggleRecordPinned(recordId) {
+        const record = state.historyRecords.find(r => r.id === recordId);
+        if (!record) return;
         try {
-            await api(`/api/generation/records/${id}`, {
+            await api(`/api/generation/records/${recordId}`, {
                 method: 'PUT',
-                body: JSON.stringify({ is_pinned: pinned }),
+                body: JSON.stringify({ pinned: !record.pinned }),
             });
-            toast(pinned ? '已置顶' : '已取消置顶');
+            toast(record.pinned ? '已取消置顶' : '已置顶');
             loadHistoryList();
         } catch (e) {
-            toast('操作失败: ' + e.message, 'error');
+            toast('置顶失败: ' + e.message, 'error');
         }
     }
 
-    async function deleteHistoryRecord(id) {
+    async function deleteRecord(recordId) {
         if (!confirm('确定要删除这条生成记录吗？此操作不可撤销。')) return;
         try {
-            await api(`/api/generation/records/${id}`, { method: 'DELETE' });
-            toast('生成记录已删除');
-            if (state.currentRecordId === id) {
+            await api(`/api/generation/records/${recordId}`, { method: 'DELETE' });
+            toast('记录已删除');
+            if (state.currentRecordId === recordId) {
                 $('#history-detail').style.display = 'none';
                 state.currentRecordId = null;
             }
@@ -1974,65 +1991,14 @@
     async function deleteAllRecords() {
         if (!confirm('确定要删除所有生成记录吗？此操作不可撤销。')) return;
         try {
-            const result = await api('/api/generation/records', { method: 'DELETE' });
-            toast(`已删除 ${result.deleted} 条生成记录`);
+            await api('/api/generation/records', { method: 'DELETE' });
+            toast('所有记录已删除');
             $('#history-detail').style.display = 'none';
             state.currentRecordId = null;
             loadHistoryList();
         } catch (e) {
             toast('删除失败: ' + e.message, 'error');
         }
-    }
-
-    function startRenameHistoryRecord(item, id) {
-        const titleEl = $('.h-title[data-field="title"]', item);
-        if (!titleEl || $('.history-rename-input', item)) return;
-
-        const currentTitle = titleEl.textContent;
-        titleEl.classList.add('editing');
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'history-rename-input';
-        input.value = currentTitle;
-        input.placeholder = '输入新名称';
-        titleEl.before(input);
-        input.focus();
-        input.setSelectionRange(0, input.value.length);
-
-        async function save() {
-            if (!input.isConnected) return;
-            const newTitle = input.value.trim();
-            if (newTitle && newTitle !== currentTitle) {
-                try {
-                    await api(`/api/generation/records/${id}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({ title: newTitle }),
-                    });
-                    titleEl.textContent = newTitle;
-                    toast('已重命名');
-                    if (state.currentRecordId === id) {
-                        $('#history-detail-title').textContent = newTitle;
-                    }
-                    const record = state.historyRecords.find(r => r.id === id);
-                    if (record) record.title = newTitle;
-                } catch (e) {
-                    toast('重命名失败: ' + e.message, 'error');
-                }
-            }
-            cleanup();
-        }
-
-        function cleanup() {
-            input.remove();
-            titleEl.classList.remove('editing');
-        }
-
-        input.addEventListener('keydown', event => {
-            if (event.key === 'Enter') save();
-            else if (event.key === 'Escape') cleanup();
-        });
-        input.addEventListener('blur', save);
     }
 
     function renderEditedHistoryDiff(original, edited) {
@@ -2130,12 +2096,8 @@
             const el = $(`#${id}`);
             if (el) draft[id] = el.type === 'checkbox' ? el.checked : el.value;
         });
-        draft.variableValues = {};
         draft.styleStrength = getWorkspaceStyleStrength();
         draft.styleMode = getWorkspaceStyleMode();
-        $$('.var-input').forEach(input => {
-            draft.variableValues[input.dataset.var] = getEditableValue(input);
-        });
         localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     }
 

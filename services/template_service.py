@@ -4,10 +4,11 @@
 """
 import json
 from datetime import datetime, timezone
+from sqlalchemy import case, func
 from sqlalchemy.orm import aliased
 from database import db
 from database.models import PromptTemplate
-from services.prompt_assembler import extract_variables
+from services.prompt_assembler import extract_variables, fill_variables
 
 
 class TemplateServiceError(Exception):
@@ -35,6 +36,7 @@ def create_template(
     description='',
     sort_order=0,
     style_strength='light',
+    is_sample=False,
 ):
     """
     创建新模板
@@ -56,6 +58,7 @@ def create_template(
         variables=json.dumps(variables, ensure_ascii=False),
         sort_order=sort_order,
         style_strength=normalize_style_strength(style_strength),
+        is_sample=bool(is_sample),
         version=1,
         created_at=utcnow(),
         updated_at=utcnow(),
@@ -70,11 +73,12 @@ def get_template(template_id):
     return PromptTemplate.query.get(template_id)
 
 
-def get_all_templates(category=None, active_only=False):
+def get_all_templates(category=None, active_only=False, exclude_samples=False):
     """
     获取模板列表
     :param category: 按分类筛选
     :param active_only: 仅活跃模板
+    :param exclude_samples: 是否排除示例模板
     """
     # 列表只展示版本链的最新节点；旧版本仍保留在版本历史中。
     child = aliased(PromptTemplate)
@@ -87,7 +91,14 @@ def get_all_templates(category=None, active_only=False):
         query = query.filter_by(category=category)
     if active_only:
         query = query.filter_by(is_active=True)
-    return query.order_by(PromptTemplate.sort_order, PromptTemplate.updated_at.desc()).all()
+    if exclude_samples:
+        query = query.filter_by(is_sample=False)
+    # 按版本链根模板 id 排序，确保更新生成新版本后位置不变
+    root_id = case(
+        (PromptTemplate.parent_id.is_(None), PromptTemplate.id),
+        else_=PromptTemplate.parent_id,
+    )
+    return query.order_by(PromptTemplate.sort_order, root_id).all()
 
 
 def update_template(template_id, **kwargs):
@@ -105,6 +116,7 @@ def update_template(template_id, **kwargs):
     category = kwargs.get('category')
     sort_order = kwargs.get('sort_order')
     is_active = kwargs.get('is_active')
+    is_sample = kwargs.get('is_sample')
     style_strength = normalize_style_strength(
         kwargs.get('style_strength', template.style_strength or 'light')
     )
@@ -125,6 +137,7 @@ def update_template(template_id, **kwargs):
                 ensure_ascii=False,
             ),
             style_strength=style_strength,
+            is_sample=template.is_sample if is_sample is None else bool(is_sample),
             sort_order=sort_order if sort_order is not None else template.sort_order,
             is_active=True,
             version=template.version + 1,
@@ -149,11 +162,54 @@ def update_template(template_id, **kwargs):
             template.sort_order = sort_order
         if is_active is not None:
             template.is_active = is_active
+        if is_sample is not None:
+            template.is_sample = bool(is_sample)
         if 'style_strength' in kwargs:
             template.style_strength = style_strength
         template.updated_at = utcnow()
         db.session.commit()
         return template
+
+
+def get_sample_templates():
+    """获取所有示例模板（过滤旧版本）"""
+    child = aliased(PromptTemplate)
+    return PromptTemplate.query.filter(
+        PromptTemplate.is_sample == True,
+        ~db.session.query(child.id)
+        .filter(child.parent_id == PromptTemplate.id)
+        .exists()
+    ).order_by(PromptTemplate.sort_order, PromptTemplate.updated_at.desc()).all()
+
+
+def create_template_from_sample(sample_id, name, category, description, variable_values):
+    """
+    基于示例模板填写变量后另存为新模板
+    :param sample_id: 示例模板ID
+    :param name: 新模板名称
+    :param category: 新模板分类
+    :param description: 新模板描述
+    :param variable_values: 变量值字典
+    :return: 新创建的普通模板
+    """
+    sample = get_template(sample_id)
+    if not sample:
+        raise TemplateServiceError(f'模板不存在: {sample_id}')
+    if not sample.is_sample:
+        raise TemplateServiceError('只有示例模板才能使用“另存为模板”功能')
+    if not name or not name.strip():
+        raise TemplateServiceError('请输入新模板名称')
+
+    filled_content = fill_variables(sample.content, variable_values or {})
+    return create_template(
+        name=name.strip(),
+        category=category,
+        content=filled_content,
+        description=description.strip() if description else '',
+        sort_order=0,
+        style_strength=sample.style_strength or 'light',
+        is_sample=False,
+    )
 
 
 def delete_template(template_id):
@@ -166,24 +222,9 @@ def delete_template(template_id):
 
 
 def delete_all_templates():
-    """删除所有模板（物理删除）
-    使用自底向上逐层删除，避免自引用外键约束错误。
-    """
-    from sqlalchemy.orm import aliased
-
-    count = 0
-    child = aliased(PromptTemplate)
-    while True:
-        leaves = PromptTemplate.query.outerjoin(
-            child, PromptTemplate.id == child.parent_id
-        ).filter(child.id.is_(None)).all()
-        if not leaves:
-            break
-        for leaf in leaves:
-            db.session.delete(leaf)
-            count += 1
-        db.session.commit()
-    return count
+    """删除所有模板（物理删除）"""
+    PromptTemplate.query.delete()
+    db.session.commit()
 
 
 def toggle_template_active(template_id):

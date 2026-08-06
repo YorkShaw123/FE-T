@@ -4,6 +4,7 @@
 """
 import re
 import json
+from sqlalchemy import case
 from sqlalchemy.orm import aliased
 from database.models import PromptTemplate, StyleProfile
 from database import db
@@ -397,10 +398,11 @@ def assemble_style_pipeline_messages(
     return messages, metadata
 
 
-def get_templates_by_category(active_only=True):
+def get_templates_by_category(active_only=True, exclude_samples=False):
     """
     获取模板，按分类分组返回
     :param active_only: True=仅活跃模板, False=全部模板
+    :param exclude_samples: True=排除示例模板
     :return: dict，分类 -> 模板列表
     """
     # 旧版本不应作为独立模板重复出现在工作台。
@@ -412,7 +414,14 @@ def get_templates_by_category(active_only=True):
     )
     if active_only:
         query = query.filter_by(is_active=True)
-    templates = query.order_by(PromptTemplate.sort_order).all()
+    if exclude_samples:
+        query = query.filter_by(is_sample=False)
+    # 按版本链根模板 id 排序，确保更新生成新版本后位置不变
+    root_id = case(
+        (PromptTemplate.parent_id.is_(None), PromptTemplate.id),
+        else_=PromptTemplate.parent_id,
+    )
+    templates = query.order_by(PromptTemplate.sort_order, root_id).all()
 
     grouped = {}
     for cat_config in [

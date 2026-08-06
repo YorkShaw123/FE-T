@@ -9,6 +9,21 @@ def apply_sqlite_migrations(db):
             "ALTER TABLE prompt_templates "
             "ADD COLUMN style_strength VARCHAR(20) NOT NULL DEFAULT 'light'"
         ))
+    if 'is_sample' not in template_columns:
+        db.session.execute(db.text(
+            "ALTER TABLE prompt_templates "
+            "ADD COLUMN is_sample BOOLEAN NOT NULL DEFAULT 0"
+        ))
+        # 一次性数据迁移：将内容中包含变量占位符的现有模板标记为示例模板
+        db.session.execute(db.text(
+            "UPDATE prompt_templates SET is_sample = 1 WHERE content LIKE '%{{%'"
+        ))
+
+    # 幂等补充：确保已存在 is_sample 列的旧数据库也能正确标记示例模板
+    db.session.execute(db.text(
+        "UPDATE prompt_templates SET is_sample = 1 "
+        "WHERE content LIKE '%{{%' AND is_sample = 0"
+    ))
 
     record_columns = _column_names(db, 'generation_records')
     if 'edited_content' not in record_columns:
@@ -29,10 +44,18 @@ def apply_sqlite_migrations(db):
             "ALTER TABLE generation_records "
             "ADD COLUMN style_profile_snapshot TEXT DEFAULT '[]'"
         ))
-    if 'is_pinned' not in record_columns:
+    # 清理旧字段：若同时存在 is_pinned 与 pinned，保留 pinned
+    if 'is_pinned' in record_columns and 'pinned' not in record_columns:
         db.session.execute(db.text(
-            "ALTER TABLE generation_records "
-            "ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT 0"
+            "ALTER TABLE generation_records RENAME COLUMN is_pinned TO pinned"
+        ))
+    elif 'is_pinned' in record_columns and 'pinned' in record_columns:
+        db.session.execute(db.text(
+            "ALTER TABLE generation_records DROP COLUMN is_pinned"
+        ))
+    if 'pinned' not in record_columns:
+        db.session.execute(db.text(
+            "ALTER TABLE generation_records ADD COLUMN pinned BOOLEAN NOT NULL DEFAULT 0"
         ))
 
     db.session.execute(db.text(
