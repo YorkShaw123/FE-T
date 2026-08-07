@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forestar Editor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #11161e;
+            color: #8b93a7;
+            font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+        .loader {
+            text-align: center;
+        }
+        .logo {
+            font-size: 44px;
+            margin-bottom: 18px;
+            animation: pulse 1.6s ease-in-out infinite;
+        }
+        .title { color: #e6e9f0; font-size: 18px; margin-bottom: 10px; }
+        .spinner {
+            width: 34px;
+            height: 34px;
+            margin: 20px auto 0;
+            border: 3px solid rgba(139, 147, 167, 0.25);
+            border-top-color: #6c8cff;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+    </style>
+</head>
+<body>
+    <div class="loader">
+        <div class="logo">
+            <!-- 与 favicon.svg 一致的绿色线描树图标 -->
+            <svg viewBox="0 0 38 38" width="96" height="96" aria-hidden="true">
+                <rect width="38" height="38" rx="12" fill="#10201a"/>
+                <g fill="none" stroke="#149b78" stroke-width="1.5">
+                    <path d="M8 30.3c5.8-4.1 13.2-5 22-2.9"/>
+                    <path d="M12 24.3c4.8-3.4 10.8-4.1 18-2.4"/>
+                    <path d="M17 18.2c3.5-2.4 7.8-2.9 13-1.7"/>
+                </g>
+                <path fill="#149b78" d="M17.8 31.7 21 8.5l2 .3-3.2 23.1z"/>
+            </svg>
+        </div>
+        <div class="title">Forestar Editor - AI文字创作助手</div>
+        <div>正在启动本地服务，请稍候…</div>
+        <div class="spinner"></div>
+    </div>
+</body>
+</html>

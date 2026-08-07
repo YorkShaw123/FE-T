@@ -19,3 +19,25 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Node / Tauri
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+.tauri/
+
+# PyInstaller 构建产物
+build/
+dist/
+src-tauri/binaries/
+
+# 直接运行版桌面应用产物（复制到项目根目录，由构建脚本生成）
+/Forestar Editor.exe
+/forestar-server.exe
+
+# 运行时产物
+debug.log
+data/
+
+# 生成的图标源图（可重新生成）
+assets/

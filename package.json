@@ -1,0 +1,16 @@
+{
+  "name": "forestar-editor",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:build": "tauri build",
+    "tauri:dev": "tauri dev",
+    "build:backend": "powershell -ExecutionPolicy Bypass -File scripts\\build-backend.ps1",
+    "build:all": "powershell -ExecutionPolicy Bypass -File scripts\\build-all.ps1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0"
+  }
+}

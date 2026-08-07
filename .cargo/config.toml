@@ -1,0 +1,9 @@
+# Rust crates 镜像加速（rsproxy.cn），国内网络环境可显著加快依赖下载
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[net]
+git-fetch-with-cli = true

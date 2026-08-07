@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forestar Editor - AI文字创作助手</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <header class="header">
+        <div class="header-left">
+            <div class="brand-mark" aria-hidden="true"><span></span><i></i></div>
+            <div class="brand-copy">
+                <h1 class="logo">Forestar <span>Editor</span></h1>
+                <span class="subtitle">智能文字创作工作台</span>
+            </div>
+        </div>
+        <div class="header-center">
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="workspace">工作台</button>
+                <button class="nav-tab" data-tab="templates">模板管理</button>
+                <button class="nav-tab" data-tab="history">生成记录</button>
+            </nav>
+        </div>
+        <div class="header-right">
+            <!-- API密钥 -->
+            <div class="api-key-area" aria-label="API 密钥">
+                <span class="control-label">密钥</span>
+                <input type="password" id="api-key-input" placeholder="输入API密钥（每次使用需手动输入）" autocomplete="off">
+                <button id="api-key-toggle" class="btn-icon" title="显示/隐藏" aria-label="显示或隐藏密钥">◉</button>
+            </div>
+            <!-- 主题切换 -->
+            <button id="theme-toggle" class="btn-icon theme-button" title="切换亮色/暗色模式" aria-label="切换明暗主题">◐</button>
+            <!-- 模型选择器 -->
+            <div class="model-selector" aria-label="模型选择">
+                <span class="control-label">模型</span>
+                <select id="provider-select">
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="siliconflow">Kimi（硅基流动）</option>
+                    <option value="aihuashen">爱化身</option>
+                </select>
+                <select id="model-select">
+                    <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                    <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+                </select>
+            </div>
+            <!-- 思考模式 -->
+            <label class="thinking-toggle" title="启用思考模式">
+                <input type="checkbox" id="thinking-enabled">
+                <span>思考模式</span>
+            </label>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+        <!-- ====== 工作台视图 ====== -->
+        <section id="tab-workspace" class="tab-content active">
+            <div class="workspace-layout">
+                <!-- 左侧：模板面板 -->
+                <aside class="panel panel-left">
+                    <div class="panel-header">
+                        <h2>📋 提示词模板</h2>
+                        <div class="panel-actions">
+                            <button id="btn-refresh-templates" class="btn btn-xs btn-outline" title="刷新模板列表">🔄</button>
+                        </div>
+                    </div>
+                    <div class="panel-body" id="template-panel-body">
+                        <!-- 动态加载模板列表 -->
+                    </div>
+                </aside>
+
+                <!-- 右侧：生成面板 -->
+                <div class="panel panel-right">
+                    <div class="panel-right-inner">
+                        <!-- 左列：配置区域 -->
+                        <div class="config-column">
+                            <!-- 提示词编排模式 -->
+                            <div class="panel-section prompt-mode-section">
+                                <div class="section-header">
+                                    <div>
+                                        <h3>🧩 结构化消息编排</h3>
+                                        <p class="section-description">将系统规则、任务、素材、范例和输出要求拆成独立消息</p>
+                                    </div>
+                                    <label class="switch-label" title="关闭时完整使用原有字符串拼装格式">
+                                        <input type="checkbox" id="structured-prompt-enabled">
+                                        <span>启用</span>
+                                    </label>
+                                </div>
+                                <p class="prompt-mode-help">默认关闭，继续使用原有 system + 单一 user 字符串格式。</p>
+                            </div>
+
+                            <!-- 本次生成的风格参考强度 -->
+                            <div class="panel-section style-control-section">
+                                <div class="section-header compact-header">
+                                    <div>
+                                        <h3>风格处理方式</h3>
+                                        <p class="section-description">保留原文拼接，或使用已分析的 Style Card</p>
+                                    </div>
+                                </div>
+                                <div class="style-mode-segmented" role="radiogroup" aria-label="风格处理方式">
+                                    <label>
+                                        <input type="radio" name="workspace-style-mode" value="legacy" checked>
+                                        <span><strong>原文拼接</strong><small>完全兼容现有方式</small></span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="workspace-style-mode" value="smart">
+                                        <span><strong>智能风格链</strong><small>Style Card + 少量范例</small></span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="workspace-style-mode" value="off">
+                                        <span><strong>关闭参考</strong><small>不发送范例文章</small></span>
+                                    </label>
+                                </div>
+                                <p id="style-mode-help" class="strength-help">沿用当前范例文章拼接逻辑，不改变任何原有行为。</p>
+                                <div id="style-scene-control" class="style-scene-control" style="display:none;">
+                                    <label for="style-scene-type">当前场景</label>
+                                    <select id="style-scene-type" class="input-select">
+                                        <option value="auto">自动判断</option>
+                                        <option value="dialogue">对话场景</option>
+                                        <option value="action">动作场景</option>
+                                        <option value="psychology">心理描写</option>
+                                        <option value="environment">环境描写</option>
+                                        <option value="transition">场景转场</option>
+                                        <option value="narration">叙事推进</option>
+                                        <option value="mixed">综合场景</option>
+                                    </select>
+                                    <small>用于从片段库中选择最相关的 2—4 个范例</small>
+                                </div>
+                                <div class="style-control-divider"></div>
+                                <div class="section-header compact-header">
+                                    <div>
+                                        <h3>风格参考强度</h3>
+                                        <p class="section-description">控制本次生成对“范例文章”模板的模仿程度</p>
+                                    </div>
+                                </div>
+                                <div class="strength-segmented" role="radiogroup" aria-label="风格参考强度">
+                                    <label>
+                                        <input type="radio" name="workspace-style-strength" value="light" checked>
+                                        <span><strong>轻度</strong><small>仅作参考</small></span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="workspace-style-strength" value="medium">
+                                        <span><strong>中度</strong><small>明显贴近</small></span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="workspace-style-strength" value="strict">
+                                        <span><strong>严格</strong><small>优先遵循</small></span>
+                                    </label>
+                                </div>
+                                <p id="style-strength-help" class="strength-help">保持模板原有位置，不额外增加风格约束。</p>
+                            </div>
+
+                            <!-- 去AI味 -->
+                            <div class="panel-section">
+                                <div class="section-header">
+                                    <h3>🔄 去AI味处理</h3>
+                                    <label class="switch-label">
+                                        <input type="checkbox" id="deai-enabled">
+                                        <span>启用</span>
+                                    </label>
+                                </div>
+                                <textarea id="deai-prompt" class="input-textarea" rows="3"
+                                    style="display:none;" placeholder="自定义去AI味提示词..."></textarea>
+                            </div>
+
+                            <!-- 前置文章 -->
+                            <div class="panel-section">
+                                <div class="section-header">
+                                    <h3>📎 前置文章（可选）</h3>
+                                    <span class="hint-text" style="font-size:11px;">超过30000字自动压缩</span>
+                                </div>
+                                <div id="article-drop-zone" class="article-drop-zone" tabindex="0" role="button">
+                                    <input type="file" id="article-file-input" accept=".txt,.doc,.docx,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+                                    <span class="drop-zone-icon">📄</span>
+                                    <span><strong>拖拽文本文件到这里</strong>，或 <button type="button" id="btn-browse-article" class="link-button">搜索本机文件</button></span>
+                                    <small>支持 .txt、.doc、.docx，单个文件不超过 10 MB</small>
+                                </div>
+                                <textarea id="previous-article" class="input-textarea" rows="5"
+                                    placeholder="也可以直接粘贴已写内容；导入文件后可在这里继续编辑..."></textarea>
+                                <div id="article-file-status" class="file-status" hidden></div>
+                            </div>
+
+                            <!-- 生成按钮 -->
+                            <div class="generate-actions">
+                                <input type="text" id="article-title" class="input-text" placeholder="文章标题（可选）" style="flex:1;">
+                                <button id="btn-generate" class="btn btn-primary btn-lg">
+                                    🚀 生成文章
+                                </button>
+                                <button id="btn-stop-generate" class="btn btn-stop btn-lg" type="button" style="display:none;">
+                                    ⏹ 停止生成
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 右列：生成结果 -->
+                        <div class="result-column">
+                            <!-- 生成结果区 -->
+                            <div class="panel-section result-section" id="result-section" style="display:none; flex:1;">
+                                <div class="section-header">
+                                    <h3>📄 生成结果</h3>
+                                    <div class="result-actions">
+                                        <button id="btn-open-result-editor" class="btn btn-xs btn-primary">✍️ 全屏编辑</button>
+                                        <button id="btn-copy-result" class="btn btn-xs btn-outline">📋 复制</button>
+                                        <button id="btn-download-result" class="btn btn-xs btn-outline">💾 下载</button>
+                                    </div>
+                                </div>
+                                <!-- API 调用状态：属于结果栏内部，避免与结果区域并排重叠 -->
+                                <div id="loading-overlay" class="loading-overlay" style="display:none;">
+                                    <div class="loading-spinner"></div>
+                                    <div class="loading-copy">
+                                        <strong>正在生成</strong>
+                                        <p id="loading-text">正在连接 API，准备生成...</p>
+                                    </div>
+                                </div>
+                                <!-- 思维链 -->
+                                <div id="reasoning-section" style="display:none;" class="reasoning-box">
+                                    <div class="section-header"><h4>💭 思维链</h4></div>
+                                    <pre id="reasoning-content" class="reasoning-content"></pre>
+                                </div>
+                                <!-- 第一版 -->
+                                <div id="first-content-section">
+                                    <div class="section-header">
+                                        <h4>第一版（原始）</h4>
+                                        <span class="editable-hint">点击“全屏编辑”使用 Markdown 与局部AI</span>
+                                    </div>
+                                    <div id="first-content" class="article-content"></div>
+                                </div>
+                                <!-- 去AI味版 -->
+                                <div id="deai-content-section" style="display:none;">
+                                    <div class="section-header"><h4>✅ 去AI味版</h4></div>
+                                    <div id="deai-content" class="article-content"></div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 可折叠提示词预览侧栏 -->
+            <aside id="prompt-preview-drawer" class="prompt-preview-drawer" aria-expanded="false">
+                <button id="btn-toggle-preview-drawer" class="preview-drawer-rail" type="button"
+                    aria-controls="prompt-preview-drawer-body" aria-expanded="false" title="展开提示词预览">
+                    <span class="preview-drawer-icon">⌘</span>
+                    <span class="preview-drawer-label">提示词预览</span>
+                    <span class="preview-drawer-arrow">‹</span>
+                </button>
+                <div id="prompt-preview-drawer-body" class="preview-drawer-body">
+                    <div class="preview-drawer-header">
+                        <div class="preview-drawer-title">
+                            <span class="preview-card-icon">检</span>
+                            <div>
+                                <h2>组合结果</h2>
+                                <p>仅预览，不调用 AI</p>
+                            </div>
+                        </div>
+                        <div class="preview-drawer-actions">
+                            <button id="btn-close-preview" class="btn btn-xs btn-outline" style="display:none;">清空</button>
+                            <button id="btn-collapse-preview-drawer" class="btn-icon" type="button" aria-label="收起提示词预览">✕</button>
+                        </div>
+                    </div>
+                    <div class="preview-drawer-scroll">
+                        <div class="prompt-preview-card" id="prompt-preview-section">
+                            <div id="prompt-preview-empty" class="prompt-preview-empty">
+                                <div class="preview-illustration">✦</div>
+                                <h4>生成前检查完整提示词</h4>
+                                <p>系统会将当前启用的模板、填写变量和前置文章组装在这里，方便发现遗漏。</p>
+                                <button id="btn-preview-prompt" class="btn btn-primary preview-main-action" type="button">生成提示词预览</button>
+                                <span>不会调用 AI，也不会消耗额度</span>
+                            </div>
+                            <pre id="prompt-preview-content" class="code-preview" style="display:none;"></pre>
+                            <div id="prompt-preview-fallback" class="prompt-preview-fallback" style="display:none;"></div>
+                            <div id="prompt-preview-meta" class="prompt-preview-meta" style="display:none;"></div>
+                            <div id="style-selection-panel" class="style-selection-panel" style="display:none;"></div>
+                            <div id="token-budget-panel" class="token-budget-panel" style="display:none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </section>
+
+        <!-- ====== 模板管理视图 ====== -->
+        <section id="tab-templates" class="tab-content">
+            <div class="templates-layout">
+                <div class="template-sidebar">
+                    <h3>模板分类</h3>
+                    <ul id="category-list">
+                        <li data-category="all" class="category-item active">全部</li>
+                        <li data-category="character" class="category-item">👤 人物设定</li>
+                        <li data-category="background" class="category-item">🌍 背景设定</li>
+                        <li data-category="plot" class="category-item">📖 剧情设定</li>
+                        <li data-category="example" class="category-item">📝 范例文章</li>
+                        <li data-category="constraint" class="category-item">⚙️ 更多约束</li>
+                    </ul>
+                    <div class="template-actions">
+                        <button id="btn-new-template" class="btn btn-primary btn-block">+ 新建模板</button>
+                        <button id="btn-import-templates" class="btn btn-outline btn-block">📥 导入模板</button>
+                        <button id="btn-export-templates" class="btn btn-outline btn-block">📤 导出模板</button>
+                    </div>
+                </div>
+                <div class="template-list" id="template-list">
+                    <!-- 动态加载 -->
+                </div>
+                <div class="template-editor" id="template-editor-panel" style="display:none;">
+                    <div class="editor-header">
+                        <button id="btn-close-editor" class="editor-exit-btn" type="button">← 退出编辑</button>
+                        <h3 id="editor-title">编辑模板</h3>
+                        <div class="editor-header-actions">
+                            <button id="btn-open-style-card" class="btn btn-outline" type="button" style="display:none;">风格卡</button>
+                            <button id="btn-version-history" class="btn btn-outline">版本历史</button>
+                            <button id="btn-save-as-template" class="btn btn-primary" type="button" style="display:none;">另存为模板</button>
+                            <button id="btn-save-template" class="btn btn-primary">保存模板</button>
+                        </div>
+                    </div>
+                    <div class="editor-body">
+                        <input type="hidden" id="edit-template-id">
+                        <div class="document-meta-bar">
+                            <input type="text" id="edit-template-name" class="document-title-input" placeholder="无标题模板">
+                            <select id="edit-template-category" class="input-select">
+                                <option value="character">人物设定</option>
+                                <option value="background">背景设定</option>
+                                <option value="plot">剧情设定</option>
+                                <option value="example">范例文章</option>
+                                <option value="constraint">更多约束</option>
+                            </select>
+                            <input type="text" id="edit-template-desc" class="input-text" placeholder="添加模板描述（可选）">
+                            <label class="switch-label" id="edit-template-is-sample-label" style="display:none;">
+                                <input type="checkbox" id="edit-template-is-sample"> 设为示例模板
+                            </label>
+                            <button id="btn-delete-template" class="btn btn-danger">删除</button>
+                        </div>
+                        <div id="sample-template-tabs" class="sample-template-tabs" style="display:none;"></div>
+                        <div class="markdown-toolbar" aria-label="Markdown 工具栏">
+                            <button type="button" data-md-prefix="# " title="一级标题">H1</button>
+                            <button type="button" data-md-prefix="## " title="二级标题">H2</button>
+                            <button type="button" data-md-wrap="**" title="粗体"><strong>B</strong></button>
+                            <button type="button" data-md-wrap="*" title="斜体"><em>I</em></button>
+                            <button type="button" data-md-prefix="- " title="列表">• 列表</button>
+                            <button type="button" data-md-prefix="> " title="引用">❝ 引用</button>
+                            <button type="button" data-md-wrap="`" title="行内代码">&lt;/&gt;</button>
+                            <span class="toolbar-tip">使用 <code>{{变量名}}</code> 标记可填写位置</span>
+                            <button id="btn-toggle-markdown-preview" type="button" class="preview-toggle active">隐藏预览</button>
+                        </div>
+                        <div class="markdown-workspace">
+                            <div class="markdown-editor-pane">
+                                <textarea id="edit-template-content" spellcheck="false"
+                                    placeholder="在这里编写模板内容，支持 Markdown 格式。&#10;&#10;例如：&#10;# 人物设定&#10;主角名为 {{主角姓名}}，性格是 {{性格}}。"></textarea>
+                            </div>
+                            <div class="markdown-preview-pane" id="markdown-preview">
+                                <div class="markdown-preview-empty">Markdown 预览会显示在这里</div>
+                            </div>
+                        </div>
+                        <div id="sample-variables-panel" class="sample-variables-panel" style="display:none;">
+                            <div class="sample-variables-list" id="sample-variables-list"></div>
+                        </div>
+                    </div>
+                    <!-- 范例文章专用 Style Card 编辑面板 -->
+                    <aside id="style-card-panel" class="style-card-panel" style="display:none;">
+                        <div class="style-card-panel-header">
+                            <div>
+                                <span class="style-card-kicker">STYLE CARD</span>
+                                <h3>风格说明书</h3>
+                                <p id="style-card-status">尚未分析</p>
+                            </div>
+                            <button id="btn-close-style-card" class="btn-icon" type="button" aria-label="关闭风格卡">✕</button>
+                        </div>
+                        <div class="style-card-panel-body">
+                            <div id="style-card-empty" class="style-card-empty">
+                                <span>析</span>
+                                <h4>将范例转换成可执行规则</h4>
+                                <p>分析只提取句式、节奏、视角和表达习惯，不总结故事内容。</p>
+                                <button id="btn-analyze-style-card" class="btn btn-primary" type="button">分析当前范例</button>
+                                <small>需要先保存模板，并使用顶部当前模型与 API 密钥</small>
+                            </div>
+                            <div id="style-card-editor" style="display:none;">
+                                <div class="style-card-notice" id="style-card-notice"></div>
+                                <label class="style-card-primary"><input id="style-card-primary" type="checkbox"> 设为主风格模板</label>
+                                <label>风格摘要<input id="style-card-summary" class="input-text" type="text" placeholder="一句话描述可执行风格"></label>
+                                <div class="style-card-grid">
+                                    <label>叙述人称<input id="style-card-person" class="input-text" type="text"></label>
+                                    <label>叙述距离<input id="style-card-distance" class="input-text" type="text"></label>
+                                    <label>句式节奏<input id="style-card-rhythm" class="input-text" type="text"></label>
+                                    <label>语言语域<input id="style-card-register" class="input-text" type="text"></label>
+                                </div>
+                                <label>正向写作行为<textarea id="style-card-behaviors" class="input-textarea" rows="4" placeholder="每行一条"></textarea></label>
+                                <label>禁用表达<textarea id="style-card-avoid" class="input-textarea" rows="4" placeholder="每行一条"></textarea></label>
+                                <label>可检查规则<textarea id="style-card-rules" class="input-textarea" rows="6" placeholder="格式：hard|规则内容，每行一条"></textarea></label>
+                                <details class="style-card-json-details">
+                                    <summary>高级 JSON</summary>
+                                    <textarea id="style-card-json" class="input-textarea" rows="16" spellcheck="false"></textarea>
+                                    <button id="btn-apply-style-json" class="btn btn-outline btn-sm" type="button">应用 JSON 到表单</button>
+                                </details>
+                            </div>
+                            <section id="style-excerpt-section" class="style-excerpt-section" style="display:none;">
+                                <div class="style-excerpt-heading">
+                                    <div><h4>参考片段库</h4><p id="style-excerpt-summary">尚未生成片段</p></div>
+                                    <button id="btn-rebuild-style-excerpts" class="btn btn-outline btn-sm" type="button">生成片段</button>
+                                </div>
+                                <div class="style-excerpt-help">系统按自然段切分并标记场景、视角、情绪和节奏。关闭片段可排除，置顶片段将优先入选。</div>
+                                <div id="style-excerpt-list" class="style-excerpt-list"></div>
+                            </section>
+                        </div>
+                        <div class="style-card-panel-footer">
+                            <button id="btn-restore-style-card" class="btn btn-outline" type="button" style="display:none;">恢复自动分析</button>
+                            <button id="btn-refresh-style-card" class="btn btn-outline" type="button" style="display:none;">重新分析</button>
+                            <button id="btn-save-style-card" class="btn btn-primary" type="button" style="display:none;">保存风格卡</button>
+                        </div>
+                    </aside>
+                    <!-- 版本历史 -->
+                    <div id="version-history-panel" style="display:none;" class="version-panel">
+                        <h4>版本历史</h4>
+                        <div id="version-list"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====== 历史记录视图 ====== -->
+        <section id="tab-history" class="tab-content">
+            <div class="history-layout">
+                <div class="history-list" id="history-list">
+                    <!-- 动态加载 -->
+                </div>
+                <div class="history-detail" id="history-detail" style="display:none;">
+                    <div class="detail-header">
+                        <h3 id="history-detail-title"></h3>
+                        <button id="btn-close-history-detail" class="btn-icon">✕</button>
+                    </div>
+                    <div class="detail-body">
+                        <div class="detail-meta" id="history-detail-meta"></div>
+                        <div class="detail-tabs">
+                            <button class="detail-tab active" data-content="final">最终版</button>
+                            <button class="detail-tab" data-content="edited">修改版</button>
+                            <button class="detail-tab" data-content="original">第一版</button>
+                            <button class="detail-tab" data-content="prompt">提示词</button>
+                        </div>
+                        <div id="history-detail-content" class="article-content"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 全屏生成结果 Markdown 编辑器 -->
+    <section id="result-editor-panel" class="result-editor-panel" style="display:none;">
+        <header class="result-editor-header">
+            <button id="btn-close-result-editor" class="editor-exit-btn" type="button">← 退出编辑</button>
+            <div class="result-editor-title">
+                <h2 id="result-editor-title">修改生成结果</h2>
+                <span id="result-editor-save-state">尚未修改</span>
+            </div>
+            <div class="editor-header-actions">
+                <button id="btn-toggle-result-preview" class="btn btn-outline" type="button">隐藏预览</button>
+                <button id="btn-save-result-edit" class="btn btn-primary" type="button">保存修改版</button>
+            </div>
+        </header>
+        <div class="result-editor-toolbar">
+            <span class="toolbar-label">Markdown</span>
+            <button type="button" data-result-md-prefix="# ">H1</button>
+            <button type="button" data-result-md-prefix="## ">H2</button>
+            <button type="button" data-result-md-wrap="**"><strong>B</strong></button>
+            <button type="button" data-result-md-wrap="*"><em>I</em></button>
+            <button type="button" data-result-md-prefix="- ">• 列表</button>
+            <button type="button" data-result-md-prefix="> ">❝ 引用</button>
+            <span>Markdown 编辑模式 · 选中文字后可在右侧交给AI处理</span>
+        </div>
+        <div class="result-editor-body">
+            <div class="result-markdown-pane">
+                <div class="editor-pane-label"><span>正文</span><small>支持 Markdown</small></div>
+                <textarea id="result-markdown-editor" spellcheck="true" aria-label="修改版 Markdown 正文"></textarea>
+            </div>
+            <article id="result-markdown-preview" class="result-markdown-preview">
+                <div class="editor-pane-label"><span>预览</span><small>实时排版</small></div>
+            </article>
+            <aside class="result-ai-sidebar">
+                <div class="result-ai-heading">
+                    <span>✨</span>
+                    <div><h3>局部AI编辑</h3><p id="result-selection-status">请在左侧选中需要处理的文字</p></div>
+                </div>
+                <div class="selection-operations">
+                    <button type="button" class="result-selection-operation active" data-operation="rewrite">重写</button>
+                    <button type="button" class="result-selection-operation" data-operation="continue">续写</button>
+                    <button type="button" class="result-selection-operation" data-operation="expand">扩写</button>
+                    <button type="button" class="result-selection-operation" data-operation="polish">润色</button>
+                </div>
+                <textarea id="result-selection-instruction" class="input-textarea" rows="4"
+                    placeholder="可选：输入附加要求，例如“加强紧张感，保留人物对白”"></textarea>
+                <button id="btn-result-transform" class="btn btn-primary btn-block" type="button" disabled>生成对比版本</button>
+                <div id="result-transform-loading" class="selection-transform-loading" style="display:none;">
+                    <span class="mini-spinner"></span> AI正在处理…
+                    <button id="btn-cancel-result-transform" type="button" class="link-button">取消</button>
+                </div>
+                <div class="result-ai-tip">AI不会直接覆盖正文。生成后将显示左右高亮对比，由你决定是否替换。</div>
+            </aside>
+        </div>
+        <div id="result-comparison-overlay" class="result-comparison-overlay" style="display:none;">
+            <div class="result-comparison-dialog">
+                <div class="comparison-dialog-header">
+                    <div><h3>局部修改对比</h3><p>红色表示原文，绿色表示AI候选；候选仍可手动修改。</p></div>
+                    <button id="btn-close-result-comparison" class="btn-icon" type="button">✕</button>
+                </div>
+                <div class="result-comparison-grid">
+                    <section><h4>原文</h4><div id="result-comparison-original" class="comparison-diff original"></div></section>
+                    <section><h4>AI修改后</h4><div id="result-comparison-proposed" class="comparison-diff proposed" contenteditable="true" spellcheck="true"></div></section>
+                </div>
+                <div class="comparison-dialog-actions">
+                    <button id="btn-discard-result-transform" class="btn btn-outline" type="button">保留原文</button>
+                    <button id="btn-apply-result-transform" class="btn btn-primary" type="button">替换选中原文</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Toast通知 -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- 导入文件选择器（隐藏） -->
+    <input type="file" id="import-file-input" accept=".json" style="display:none;">
+
+    <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>
