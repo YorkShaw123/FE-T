@@ -107,6 +107,31 @@ class LLMClient:
                 configured['top_p'] = 0.9
             return configured
 
+        if self.provider == 'gemini':
+            model_config = next(
+                (
+                    item for item in Config.LLM_PROVIDERS['gemini']['models']
+                    if item['id'] == configured.get('model')
+                ),
+                {},
+            )
+            thinking_mode = model_config.get('thinking_mode', 'always')
+
+            # Gemini OpenAI 兼容端点通过 reasoning_effort 控制思考强度：
+            # low / medium / high 对应思考 token 预算 1024 / 8192 / 24576，none 表示关闭思考。
+            # 项目内思考强度仅支持 high / max，Gemini 最高档为 high，因此将 max 映射为 high。
+            if thinking_enabled:
+                configured['reasoning_effort'] = (
+                    'high' if reasoning_effort == 'max' else reasoning_effort
+                )
+            elif thinking_mode == 'switchable':
+                # 2.5 Flash 可显式关闭思考
+                configured['reasoning_effort'] = 'none'
+            else:
+                # 2.5 Pro 无法关闭思考，降至最低强度以降低延迟与消耗
+                configured['reasoning_effort'] = 'low'
+            return configured
+
         if thinking_enabled:
             configured['reasoning_effort'] = reasoning_effort
             configured['extra_body'] = {'thinking': {'type': 'enabled'}}

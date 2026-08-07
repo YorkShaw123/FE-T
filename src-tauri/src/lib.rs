@@ -1,4 +1,4 @@
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -6,20 +6,26 @@ use tauri::{Manager, RunEvent};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
-/// Flask 后端监听地址与端口（与 app.py 保持一致）
+/// Flask 后端监听地址（与 app.py 保持一致）
 const SERVER_HOST: &str = "127.0.0.1";
-const SERVER_PORT: u16 = 5000;
 /// 等待后端启动的超时时间
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// 持有 Sidecar 子进程句柄，用于应用退出时清理
 struct SidecarHandle(Mutex<Option<CommandChild>>);
 
+/// 探测一个当前空闲的本地端口，作为 Flask 后端监听端口。
+/// 桌面版不再固定占用 5000，从而避免与 Web 版（默认 5000）或其他程序冲突。
+fn pick_free_port() -> u16 {
+    let listener = TcpListener::bind((SERVER_HOST, 0)).expect("无法绑定本地空闲端口");
+    listener.local_addr().expect("读取本地端口失败").port()
+}
+
 /// 轮询等待后端端口就绪
-fn wait_for_server(timeout: Duration) -> bool {
+fn wait_for_server(port: u16, timeout: Duration) -> bool {
     let start = Instant::now();
     while start.elapsed() < timeout {
-        if TcpStream::connect((SERVER_HOST, SERVER_PORT)).is_ok() {
+        if TcpStream::connect((SERVER_HOST, port)).is_ok() {
             return true;
         }
         std::thread::sleep(Duration::from_millis(300));
@@ -32,11 +38,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // 1) 以 Sidecar 方式启动 Python（Flask）后端
+            // 1) 探测空闲端口，并通过环境变量 FORESTAR_PORT 传给后端
+            //    （app.py 读取该变量：桌面版随机端口，Web 版仍默认 5000）
+            let server_port = pick_free_port();
             let sidecar_command = app
                 .shell()
                 .sidecar("forestar-server")
-                .expect("未找到 Sidecar 二进制 forestar-server，请先执行后端打包");
+                .expect("未找到 Sidecar 二进制 forestar-server，请先执行后端打包")
+                .env("FORESTAR_PORT", server_port.to_string());
             let (mut rx, child) = sidecar_command
                 .spawn()
                 .expect("启动 Flask Sidecar 失败");
@@ -70,16 +79,16 @@ pub fn run() {
                 .get_webview_window("main")
                 .expect("找不到主窗口 main");
             std::thread::spawn(move || {
-                if wait_for_server(STARTUP_TIMEOUT) {
+                if wait_for_server(server_port, STARTUP_TIMEOUT) {
                     let _ = window.eval(&format!(
                         "window.location.replace('http://{}:{}/')",
-                        SERVER_HOST, SERVER_PORT
+                        SERVER_HOST, server_port
                     ));
                 } else {
                     // 后端启动超时：在等待页中给出明确提示
-                    let _ = window.eval(
-                        r#"document.body.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#11161e;color:#8b93a7;text-align:center;padding:24px;box-sizing:border-box;"><h2 style="color:#e6e9f0;">后端启动超时</h2><p style="line-height:1.8;">无法连接本地服务（127.0.0.1:5000）。<br/>可能原因：端口被占用、杀毒软件拦截，或上次运行的进程未退出。<br/>请关闭本应用后重试。</p></div>'"#
-                    );
+                    let js = r#"document.body.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#11161e;color:#8b93a7;text-align:center;padding:24px;box-sizing:border-box;"><h2 style="color:#e6e9f0;">后端启动超时</h2><p style="line-height:1.8;">无法连接本地服务（127.0.0.1:5000）。<br/>可能原因：端口被占用、杀毒软件拦截，或上次运行的进程未退出。<br/>请关闭本应用后重试。</p></div>'"#
+                        .replace("127.0.0.1:5000", &format!("{}:{}", SERVER_HOST, server_port));
+                    let _ = window.eval(&js);
                 }
             });
 

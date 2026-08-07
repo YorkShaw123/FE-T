@@ -33,6 +33,12 @@
             </div>
             <!-- 主题切换 -->
             <button id="theme-toggle" class="btn-icon theme-button" title="切换亮色/暗色模式" aria-label="切换明暗主题">◐</button>
+            <!-- 界面缩放 -->
+            <div class="zoom-control" aria-label="界面缩放">
+                <button id="zoom-out" class="zoom-btn" type="button" title="缩小界面（Ctrl+-）" aria-label="缩小界面">−</button>
+                <button id="zoom-reset" class="zoom-level" type="button" title="当前缩放比例，点击恢复 100%（Ctrl+0）">100%</button>
+                <button id="zoom-in" class="zoom-btn" type="button" title="放大界面（Ctrl++）" aria-label="放大界面">+</button>
+            </div>
             <!-- 模型选择器 -->
             <div class="model-selector" aria-label="模型选择">
                 <span class="control-label">模型</span>
@@ -41,6 +47,7 @@
                     <option value="openai">OpenAI</option>
                     <option value="siliconflow">Kimi（硅基流动）</option>
                     <option value="aihuashen">爱化身</option>
+                    <option value="gemini">Gemini（claudecode 中转）</option>
                 </select>
                 <select id="model-select">
                     <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>

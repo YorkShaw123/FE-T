@@ -145,6 +145,28 @@ class Config:
                 },
             ],
         },
+        'gemini': {
+            'name': 'Gemini（claudecode 中转）',
+            'base_url': 'https://api.claudecode.net.cn/api/gemini',
+            'models': [
+                {
+                    'id': 'gemini-2.5-pro',
+                    'name': 'Gemini 2.5 Pro',
+                    'description': '高质量深度推理模型（内置思考，不可关闭）',
+                    'supports_thinking': True,
+                    'thinking_mode': 'always',
+                    'context_window': 1048576,
+                },
+                {
+                    'id': 'gemini-2.5-flash',
+                    'name': 'Gemini 2.5 Flash',
+                    'description': '快速响应的轻量推理模型',
+                    'supports_thinking': True,
+                    'thinking_mode': 'switchable',
+                    'context_window': 1048576,
+                },
+            ],
+        },
     }
 
     # 模板分类定义

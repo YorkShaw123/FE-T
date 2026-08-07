@@ -4,6 +4,7 @@
  */
 import { $, $$, api } from './utils.js';
 import { state, DRAFT_KEY, DRAFT_FIELDS } from './state.js';
+import { initZoom } from './zoom.js';
 import {
     getWorkspaceStyleStrength,
     getWorkspaceStyleMode,
@@ -168,6 +169,7 @@ function restoreWorkspaceDraft() {
 // ==================== 启动 ====================
 
 function init() {
+    initZoom();
     initTheme();
     initTabs();
     initApiKey();

@@ -36,10 +36,14 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # 排除打包时不需要的框架，减小体积
+        # 排除打包时不需要的框架与标准库，减小体积
         'tkinter',
         'pydoc',
+        'pydoc_data',
+        'lib2to3',
         'unittest',
+        'setuptools',
+        'pip',
     ],
     noarchive=False,
 )
@@ -56,7 +60,9 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # 关闭 UPX：PyInstaller 归档本身已做 zlib 压缩，UPX 对体积收益有限，
+    # 却会提高杀软误报概率；关闭后误报率明显降低
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,          # 打包为 GUI 程序，不弹出黑色控制台窗口
@@ -65,4 +71,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    version=os.path.join(ROOT, 'forestar-version-info.txt'),  # 注入版本信息，降低误报
 )

@@ -1,12 +1,13 @@
 # 🌲 Forestar Editor - AI文字创作助手
 
 > 一款本地运行的 AI 文字创作工具：通过提示词模板快速组装指令，调用大语言模型 API 生成文章。
-> 桌面端（Tauri + Flask Sidecar）为主要产品形态；内置 Web 版后端保留用于测试与调试。
+> **产品定位**：桌面端（Tauri + Flask Sidecar）为唯一主分发形态；内置 Web 版后端仅作为**开发调试 / 高级用户自托管入口**。
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![Flask](https://img.shields.io/badge/Flask-3.1-lightgrey)
 ![Tauri](https://img.shields.io/badge/Tauri-2-green)
 ![Platform](https://img.shields.io/badge/Platform-Windows-orange)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ## 功能特点
 
@@ -41,14 +42,18 @@
 
 ```
 Forestar_Editior/
-├── Forestar Editor.exe                            # 桌面端主程序（双击即可运行）
+├── Forestar Editor.exe                            # 桌面端主程序（双击即可运行，主分发形态）
 ├── forestar-server.exe    # 桌面端内嵌后端（与主程序同目录分发）
 ├── README.md
-├── requirements.txt                               # Python 依赖（Web 测试版）
+├── LICENSE                                        # MIT 开源许可证
+├── requirements.txt                               # Python 依赖（Web 版）
 ├── package.json                                   # Tauri 构建脚本
 ├── forestar-server.spec                           # PyInstaller 打包配置
-├── server/                                        # Flask Web 后端（仅测试用途）
-│   ├── app.py                                     # Web 版入口（测试用）
+├── forestar-version-info.txt                      # 后端 exe 版本信息（降低杀软误报）
+├── Dockerfile                                     # Web 版容器化（自托管入口）
+├── .dockerignore
+├── server/                                        # Flask Web 后端
+│   ├── app.py                                     # Web 版入口（开发调试 / 自托管）
 │   ├── config.py                                  # 应用配置
 │   ├── database/                                  # ORM 模型、轻量迁移
 │   ├── services/                                  # 业务服务层
@@ -100,7 +105,7 @@ server/
 
 ## 快速开始
 
-### 方式一：桌面版（推荐，主要功能入口）
+### 方式一：桌面版（推荐，唯一主分发形态）
 
 项目根目录已包含可直接运行的两个文件（由构建脚本生成）：
 
@@ -109,7 +114,12 @@ server/
 
 > 桌面版无需安装 Python、Node 或 Rust，用户数据（SQLite）自动持久化在 `%USERPROFILE%\.forestar-editor\data`。
 
-### 方式二：Web 测试版（仅供开发测试）
+### 方式二：Web 版（开发调试 / 高级用户自托管入口）
+
+> Web 版与桌面版共用同一份 SQLite 数据库（见下方「数据互通」）。
+> 产品定位：**桌面版是唯一主分发形态**；Web 版面向开发者日常调试、以及熟悉 Python/Docker 的高级用户自托管，不面向普通用户分发。
+
+**方式 2.1：本地运行（开发调试）**
 
 ```bash
 # 1. 创建虚拟环境并安装依赖
@@ -121,9 +131,18 @@ python -m venv .venv
 .\.venv\Scripts\python server\app.py
 ```
 
-浏览器访问 http://127.0.0.1:5000。
+浏览器访问 http://127.0.0.1:5000。可用环境变量覆盖监听地址与端口：`FORESTAR_HOST`（默认 `127.0.0.1`）、`FORESTAR_PORT`（默认 `5000`）。
 
-> Web 版与桌面版共用同一份 SQLite 数据库（见下方「数据互通」），因此 Web 版仅作为测试与调试入口，不作为主要分发形态。
+**方式 2.2：Docker 自托管（高级用户）**
+
+```bash
+docker build -t forestar-editor .
+docker run -d -p 5000:5000 \
+  -v forestar-data:/root/.forestar-editor/data \
+  forestar-editor
+```
+
+访问 http://127.0.0.1:5000。数据默认持久化在 Docker 卷 `forestar-data`（容器内 `/root/.forestar-editor/data`），可通过环境变量 `FORESTAR_DATA_DIR` 指定其他目录。
 
 ## 使用说明
 
@@ -169,7 +188,7 @@ python -m venv .venv
 - **统一数据目录**：两版的数据统一存放在 `%USERPROFILE%\.forestar-editor\data\forestar.db`，可通过环境变量 `FORESTAR_DATA_DIR` 覆盖到其他位置
 - **Web 版**（`python server\app.py`）：同样使用上述公共目录；首次运行时若检测到旧的 `data\forestar.db`，会自动**复制**迁移到公共目录（原目录保留作为备份，仅执行一次）
 - **桌面版**：安装或直接运行后，数据直接读写同一公共目录，与 Web 版完全互通——在网页版创建的模板、生成的记录，桌面版打开即可见，反之亦然
-- 注意：两版**不要同时运行**（都监听 `127.0.0.1:5000`，后启动的一方会因端口占用提示超时）
+- **端口说明**：桌面版每次启动自动使用**随机空闲端口**（不再固定占用 5000），Web 版默认 `5000`，两者可同时运行互不冲突
 
 ## 打包构建（Windows）
 
@@ -202,11 +221,13 @@ npm run build:backend
 npm run tauri:build
 ```
 
+> 打包说明：后端 exe 关闭了 UPX 压缩（降低杀软误报率）并注入标准 Windows 版本信息（[forestar-version-info.txt](forestar-version-info.txt)）；`build:backend` 的原始产物位于 `dist/forestar-server.exe`。
+
 ### 桌面版架构说明
 
 - **前端 100% 复用**：`server/templates/`、`server/static/` 由 Flask 直接提供，桌面窗口在后端就绪后自动导航到 `http://127.0.0.1:5000`，前端代码零修改
 - **后端 100% 复用**：`server/services/`、`server/routes/`、`server/database/` 用 PyInstaller 编译为单文件可执行程序，由 Tauri 以 Sidecar 方式自动拉起
-- **Sidecar 启动**（`src-tauri/src/lib.rs`）：Tauri 启动时以 `shell.sidecar("forestar-server")` 拉起 Flask 后端，轮询 `127.0.0.1:5000` 端口就绪后跳转；退出时自动 kill 子进程，避免残留
+- **Sidecar 启动**（`src-tauri/src/lib.rs`）：Tauri 启动时以 `shell.sidecar("forestar-server")` 拉起 Flask 后端，先探测空闲端口并通过环境变量 `FORESTAR_PORT` 传给后端，轮询该端口就绪后跳转；退出时自动 kill 子进程，避免残留
 - **`useLocalToolsDir: true`**（`tauri.conf.json`）：将 NSIS 等打包工具缓存到项目内 `src-tauri/target/.tauri/`，避免写入系统缓存目录（无权限或沙箱环境下必要）
 
 ### 安装与卸载
@@ -219,7 +240,7 @@ npm run tauri:build
 
 | 现象 | 原因 | 解决 |
 |---|---|---|
-| 窗口提示「后端启动超时」 | 端口 5000 被占用、杀毒软件拦截、上次运行残留进程 | 关闭占用端口的程序；任务管理器结束 `forestar-server.exe` 后重试 |
+| 窗口提示「后端启动超时」 | 随机端口被占用、杀毒软件拦截、上次运行残留进程 | 任务管理器结束 `forestar-server.exe` 后重试；将应用加入杀毒白名单 |
 | 直接运行版双击无反应 | 主程序与后端不在同一目录，或后端被杀毒软件拦截 | 确认 `forestar-server.exe` 与主程序同目录；将应用加入杀毒白名单 |
 | `cargo` 命令找不到 | cargo 不在 PATH | `$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"` |
 | `NSIS directory is missing some files` | 打包工具缓存损坏或网络下载失败 | 删除 `src-tauri\target\.tauri\NSIS` 目录后重新 `npm run tauri:build` |
