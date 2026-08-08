@@ -9,6 +9,8 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+**GitHub**：<https://github.com/YorkShaw123/FE-T>
+
 ## 功能特点
 
 ### 核心功能
@@ -23,8 +25,8 @@
 - **前置文章导入**：支持 TXT、DOC、DOCX 文本一键导入
 - **Token 预算预检**：生成前估算 Token 用量，超限提前拦截并提示
 - **全屏编辑器**：对生成结果全屏 Markdown 编辑，支持局部续写/重写/扩写/润色与 diff 对比
-- **多模型支持**：DeepSeek、OpenAI、硅基流动 Kimi，以及爱化身兼容接口
-- **思考模式**：支持 DeepSeek 与 Kimi 对应模型的思考模式（思维链展示）
+- **多模型支持**：DeepSeek、OpenAI、硅基流动 Kimi、Gemini（claudecode 中转），以及爱化身兼容接口
+- **思考模式**：支持 DeepSeek、Kimi 与 Gemini 对应模型的思考模式（思维链展示）
 - **暗色/亮色模式**：一键切换
 
 ### 高级功能
@@ -150,7 +152,7 @@ docker run -d -p 5000:5000 \
 在「模板管理」页面中，按分类创建提示词模板。使用 `{{变量名}}` 标记需要修改的位置。
 
 ### 2. 填写API密钥
-在顶部输入框中输入所选平台对应的 API 密钥（不会保存）。选择「Kimi（硅基流动）」时，请使用硅基流动 API Key。
+在顶部输入框中输入所选平台对应的 API 密钥（不会保存）。选择「Kimi（硅基流动）」时请使用硅基流动 API Key；选择「Gemini（claudecode 中转）」时请使用对应中转站的 API Key。
 
 ### 3. 填写变量
 在工作台的变量区域，填写每个 `{{变量}}` 对应的值。
@@ -181,6 +183,8 @@ docker run -d -p 5000:5000 \
 | Kimi（硅基流动） | Kimi K2.5 | ✅ 可切换 |
 | Kimi（硅基流动） | Kimi K2 Thinking | ✅ 固定开启 |
 | Kimi（硅基流动） | Kimi K2 Instruct / 0905 | ❌ |
+| Gemini（claudecode 中转） | Gemini 2.5 Pro | ✅ 内置思考 |
+| Gemini（claudecode 中转） | Gemini 2.5 Flash | ✅ 可切换 |
 | 爱化身 | DeepSeek V4 Flash | ❌ |
 
 ## 数据互通（Web 版与桌面版共用同一份数据）
@@ -225,7 +229,7 @@ npm run tauri:build
 
 ### 桌面版架构说明
 
-- **前端 100% 复用**：`server/templates/`、`server/static/` 由 Flask 直接提供，桌面窗口在后端就绪后自动导航到 `http://127.0.0.1:5000`，前端代码零修改
+- **前端 100% 复用**：`server/templates/`、`server/static/` 由 Flask 直接提供，桌面窗口在后端就绪后自动导航到本地随机端口，前端代码零修改
 - **后端 100% 复用**：`server/services/`、`server/routes/`、`server/database/` 用 PyInstaller 编译为单文件可执行程序，由 Tauri 以 Sidecar 方式自动拉起
 - **Sidecar 启动**（`src-tauri/src/lib.rs`）：Tauri 启动时以 `shell.sidecar("forestar-server")` 拉起 Flask 后端，先探测空闲端口并通过环境变量 `FORESTAR_PORT` 传给后端，轮询该端口就绪后跳转；退出时自动 kill 子进程，避免残留
 - **`useLocalToolsDir: true`**（`tauri.conf.json`）：将 NSIS 等打包工具缓存到项目内 `src-tauri/target/.tauri/`，避免写入系统缓存目录（无权限或沙箱环境下必要）
@@ -250,4 +254,6 @@ npm run tauri:build
 
 ## License
 
-本项目暂未指定开源许可证，使用前请联系作者确认授权方式。
+本项目以 **MIT License** 开源（见 [LICENSE](LICENSE)）。Copyright (c) 2026 肖嘉琛。
+
+MIT 为宽松许可证：允许自由使用、复制、修改、合并、发布、分发、再许可和/或出售本软件副本，仅需保留版权声明与本许可声明。参考采用相同协议的高星项目：LobeChat、Open WebUI。
