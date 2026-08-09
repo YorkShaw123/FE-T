@@ -19,7 +19,7 @@ function renderStyleCardProfile(profile) {
     $('#btn-save-style-card').style.display = hasCard ? '' : 'none';
     $('#btn-refresh-style-card').style.display = hasCard ? '' : 'none';
     $('#btn-restore-style-card').style.display = hasCard ? '' : 'none';
-    $('#btn-analyze-style-card').textContent = profile?.analysis_status === 'error' ? '重新分析' : '分析当前范例';
+    $('#btn-analyze-style-card').textContent = profile?.analysis_status === 'error' ? '重新分析' : '分析当前模板风格';
     if (!hasCard) {
         if (profile?.error_message) $('#style-card-status').textContent = `分析失败：${profile.error_message}`;
         return;
@@ -73,6 +73,21 @@ function cardFromStyleForm() {
 /** 加载当前编辑模板的风格卡 */
 export async function loadStyleProfile() {
     const id = $('#edit-template-id').value;
+    // 明确"分析对象"：显示当前编辑的是哪个模板，避免用户分不清分析来源
+    const targetEl = $('#style-card-target');
+    if (targetEl) {
+        const name = $('#edit-template-name')?.value.trim() || '未命名模板';
+        const category = $('#edit-template-category')?.value || '';
+        const categoryLabels = {
+            example: '范例文章模板', character: '人物设定模板', background: '背景设定模板',
+            plot: '剧情设定模板', constraint: '约束模板',
+        };
+        const label = categoryLabels[category] || '模板';
+        // 无当前编辑模板（如从工作台"管理语料库"直接打开面板）时给出明确指引
+        targetEl.textContent = id
+            ? `分析对象：${name}（${label}）`
+            : '未打开模板：请先在「模板管理 → 范例文章」中打开一个模板，再进行分析';
+    }
     if (!id) {
         renderStyleCardProfile({ analysis_status: 'missing', card: null });
         return;
@@ -191,7 +206,7 @@ async function rebuildCurrentStyleExcerpts() {
 /** 触发当前范例模板的 Style Card 分析 */
 async function analyzeCurrentStyleCard() {
     const id = $('#edit-template-id').value;
-    if (!id) { toast('请先保存范例模板', 'warning'); return; }
+    if (!id) { toast('请先在「模板管理」中打开并保存一个范例模板', 'warning'); return; }
     const apiKey = $('#api-key-input').value.trim();
     if (!apiKey) { toast('请先在顶部输入 API 密钥', 'warning'); return; }
     const buttons = [$('#btn-analyze-style-card'), $('#btn-refresh-style-card')];

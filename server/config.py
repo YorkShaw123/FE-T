@@ -24,7 +24,8 @@ class Config:
         'connect_args': {'timeout': 30},
     }
     JSON_AS_ASCII = False
-    MAX_CONTENT_LENGTH = 2 * 1024 * 1024
+    # 上传上限 20MB：支持百万字级风格语料一次性导入（中文 UTF-8 约 3 字节/字）
+    MAX_CONTENT_LENGTH = 20 * 1024 * 1024
 
     # 前置文章自动压缩阈值（字符数），超过此长度自动压缩
     PREVIOUS_ARTICLE_COMPRESS_THRESHOLD = 30000
@@ -41,6 +42,14 @@ class Config:
         '你是一名严谨的中文创作助手。严格遵守用户提供的设定与约束；'
         '占位符若未填写，不得自行编造对应事实；只输出成稿，不解释写作过程。'
     )
+
+    # ---- Style RAG：Embedding 向量化配置 ----
+    # 走硅基流动 OpenAI 兼容 embeddings 端点（BAAI/bge-m3，1024 维），
+    # 不引入本地向量库，保持 PyInstaller 打包体积可控。
+    EMBEDDING_PROVIDER = 'siliconflow'
+    EMBEDDING_MODEL = 'BAAI/bge-m3'
+    EMBEDDING_DIMENSIONS = 1024
+    EMBEDDING_BATCH_SIZE = 16
 
     # 支持的大语言模型配置
     LLM_PROVIDERS = {

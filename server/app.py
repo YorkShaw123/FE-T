@@ -76,6 +76,7 @@ from database import init_db
 from routes.template_routes import template_bp
 from routes.generation_routes import generation_bp
 from routes.style_routes import style_bp
+from routes.style_corpora_routes import style_corpora_bp
 
 
 def create_app(config_name=None):
@@ -100,6 +101,7 @@ def create_app(config_name=None):
     app.register_blueprint(template_bp)
     app.register_blueprint(generation_bp)
     app.register_blueprint(style_bp)
+    app.register_blueprint(style_corpora_bp)
 
     # 注册错误处理
     register_error_handlers(app)

@@ -252,6 +252,7 @@ function resetEditorUi() {
     $('#sample-variables-list').innerHTML = '';
 
     $('#btn-save-as-template').style.display = 'none';
+    $('#btn-delete-sample').style.display = 'none';
     $('#btn-save-template').style.display = '';
     $('#btn-delete-template').style.display = '';
     $('#btn-version-history').style.display = '';
@@ -279,13 +280,14 @@ function enterSampleMode(tpl) {
     content.readOnly = true;
     renderMarkdownPreview();
 
-    // 示例模式下隐藏保存/删除/版本/示例开关/风格卡，显示另存为
+    // 示例模式下隐藏保存/删除/版本/示例开关/风格卡，显示另存为与删除示例
     $('#btn-save-template').style.display = 'none';
     $('#btn-delete-template').style.display = 'none';
     $('#btn-version-history').style.display = 'none';
     $('#btn-open-style-card').style.display = 'none';
     $('#edit-template-is-sample-label').style.display = 'none';
     $('#btn-save-as-template').style.display = '';
+    $('#btn-delete-sample').style.display = '';
 
     // 隐藏 Markdown 工具栏的格式按钮，仅保留预览切换
     $('.markdown-toolbar').classList.add('sample-mode');
@@ -451,6 +453,23 @@ safeBind('#btn-save-as-template', 'click', async () => {
         loadTemplatesList();
     } catch (e) {
         toast('保存失败: ' + e.message, 'error');
+    }
+});
+
+// 删除示例模板
+safeBind('#btn-delete-sample', 'click', async () => {
+    const sampleId = $('#edit-template-id').value;
+    if (!sampleId) { toast('请先选择示例模板', 'warning'); return; }
+    if (!confirm('确定删除这个示例模板吗？删除后不可恢复。')) return;
+    try {
+        await api(`/api/templates/${sampleId}`, { method: 'DELETE' });
+        // 同步内存缓存，避免刷新前列表仍显示已删除的示例
+        state.sampleTemplates = state.sampleTemplates.filter(t => String(t.id) !== String(sampleId));
+        toast('示例模板已删除');
+        closeTemplateEditor();
+        loadTemplatesList();
+    } catch (e) {
+        toast('删除失败: ' + e.message, 'error');
     }
 });
 

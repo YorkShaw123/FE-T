@@ -18,6 +18,7 @@ import { loadHistoryList } from './history.js';
 import './promptPreview.js';
 import './generation.js';
 import './resultEditor.js';
+import './styleCorpora.js';
 
 // ==================== 主题切换 ====================
 
@@ -144,7 +145,10 @@ function restoreWorkspaceDraft() {
         const strengthInput = $(`input[name="workspace-style-strength"][value="${strength}"]`);
         if (strengthInput) strengthInput.checked = true;
         const styleMode = draft.styleMode || 'legacy';
-        const modeInput = $(`input[name="workspace-style-mode"][value="${styleMode}"]`);
+        // 'off' 模式已移除，历史草稿中若残留则回退默认"原文拼接"
+        const modeInput = $(`input[name="workspace-style-mode"][value="${styleMode}"]`)
+            || $('input[name="workspace-style-mode"]:checked')
+            || $('input[name="workspace-style-mode"]');
         if (modeInput) modeInput.checked = true;
         updateWorkspaceStyleStrengthHelp();
         updateWorkspaceStyleModeHelp();
@@ -175,6 +179,13 @@ function init() {
     initApiKey();
     initModelSelector();
     restoreWorkspaceDraft();
+
+    // 将样式卡/语料库面板提升到 body 层级：
+    // 该面板原本嵌在「模板管理」标签页内的隐藏容器中（display:none），
+    // 导致工作台的「管理语料库」按钮打开面板后不可见（fixed 元素被隐藏祖先吞掉）。
+    // 面板为 position:fixed，移到 body 下不影响样式，且所有 JS 均按 ID 查找、无父级依赖。
+    const styleCardPanel = document.getElementById('style-card-panel');
+    if (styleCardPanel) document.body.appendChild(styleCardPanel);
 
     // 初始加载工作台模板
     loadWorkspaceTemplates();

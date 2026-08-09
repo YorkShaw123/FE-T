@@ -1,10 +1,21 @@
 """
-大语言模型 API 客户端
+大语言模型 API 客户端（轻量版）
 统一封装 DeepSeek、OpenAI、硅基流动 Kimi、爱化身等平台的调用逻辑
 支持思考模式（thinking mode）和 reasoning_effort 控制
+
+实现说明：
+- 仅依赖 Python 标准库 urllib，替代 openai SDK（体积约 15~20MB，含 pydantic/httpx/jiter
+  等依赖），从而显著减小 PyInstaller 打包体积并加快桌面端启动。
+- 协议兼容 OpenAI Chat Completions 与 Embeddings 端点：POST {base_url}/chat/completions、
+  {base_url}/embeddings；流式响应按 SSE（data: 行）解析。
 """
-from openai import OpenAI
+import json
+import time
+import urllib.error
+import urllib.request
+
 from config import Config
+from services.errors import friendly_error_message
 
 
 class LLMClientError(Exception):
@@ -18,7 +29,7 @@ class LLMClient:
     def __init__(self, provider='deepseek', api_key=None, base_url=None):
         """
         初始化客户端
-        :param provider: 提供商名称（deepseek / openai / siliconflow / aihuashen）
+        :param provider: 提供商名称（deepseek / openai / siliconflow / aihuashen / gemini）
         :param api_key: API密钥
         :param base_url: 自定义 base_url
         """
@@ -26,33 +37,29 @@ class LLMClient:
         provider_config = Config.LLM_PROVIDERS.get(provider, {})
 
         if base_url:
-            self.base_url = base_url
+            self.base_url = base_url.rstrip('/')
         else:
-            self.base_url = provider_config.get('base_url', 'https://api.deepseek.com')
+            self.base_url = provider_config.get('base_url', 'https://api.deepseek.com').rstrip('/')
 
         if not api_key or not api_key.strip():
             raise LLMClientError('API密钥不能为空')
 
         # 输入框既兼容纯 Token，也兼容用户从文档中复制的 ``Bearer <TOKEN>``。
-        # OpenAI SDK 的 api_key 会自动生成 Authorization: Bearer 请求头；
-        # 爱化身接口额外显式设置该请求头，确保兼容其网关鉴权要求。
+        # 统一以 Authorization: Bearer 请求头鉴权（aihuashen 网关同样遵循该约定）。
         normalized_key = api_key.strip()
         if normalized_key.lower().startswith('bearer '):
             normalized_key = normalized_key[7:].strip()
         if not normalized_key:
             raise LLMClientError('API密钥不能为空')
 
-        client_options = dict(
-            api_key=normalized_key,
-            base_url=self.base_url,
-            timeout=Config.LLM_TIMEOUT_SECONDS,
-            max_retries=Config.LLM_MAX_RETRIES,
-        )
-        if self.provider == 'aihuashen':
-            client_options['default_headers'] = {
-                'Authorization': f'Bearer {normalized_key}',
-            }
-        self.client = OpenAI(**client_options)
+        self.api_key = normalized_key
+        self.headers = {
+            'Authorization': f'Bearer {normalized_key}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            # 禁用 gzip 压缩，避免流式/响应体需要额外解压逻辑（桌面端本地网络无性能压力）
+            'Accept-Encoding': 'identity',
+        }
 
     @staticmethod
     def validate_model(provider, model_id):
@@ -91,7 +98,7 @@ class LLMClient:
             thinking_mode = model_config.get('thinking_mode', 'disabled')
 
             # 硅基流动使用 enable_thinking / thinking_budget，
-            # 并通过 extra_body 透传 OpenAI SDK 未声明的请求字段。
+            # 通过 extra_body 透传未声明的请求字段（发送时合并进顶层）。
             if thinking_mode == 'switchable':
                 configured['extra_body'] = {
                     'enable_thinking': bool(thinking_enabled),
@@ -139,6 +146,154 @@ class LLMClient:
             configured['temperature'] = 0.7
             configured['top_p'] = 0.9
         return configured
+
+    # ---------- 底层 HTTP 请求 ----------
+
+    def _build_body(self, params):
+        """合并 extra_body（OpenAI SDK 专有透传字段）到请求体顶层。"""
+        body = dict(params)
+        extra = body.pop('extra_body', None)
+        if isinstance(extra, dict):
+            body.update(extra)
+        return body
+
+    def _post_json(self, path, payload, timeout=None):
+        """POST JSON 并返回 (status, body_dict)；网络错误/5xx 按配置重试。"""
+        url = f'{self.base_url}{path}'
+        timeout = timeout or Config.LLM_TIMEOUT_SECONDS
+        last_error = None
+        attempts = Config.LLM_MAX_RETRIES + 1
+        for attempt in range(attempts):
+            request = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers=self.headers,
+                method='POST',
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    raw = response.read()
+                    status = response.status
+                if not raw:
+                    return status, {}
+                return status, json.loads(raw.decode('utf-8'))
+            except urllib.error.HTTPError as exc:
+                status = exc.code
+                body_text = ''
+                try:
+                    body_text = exc.read().decode('utf-8', errors='replace')
+                except Exception:
+                    pass
+                error_message = self._extract_error_message(body_text, status)
+                # 429 / 5xx 可重试，其余直接抛出
+                if status in (429, 500, 502, 503, 504) and attempt < attempts - 1:
+                    last_error = error_message
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+                raise LLMClientError(error_message) from exc
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+                last_error = friendly_error_message(exc)
+                if attempt < attempts - 1:
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+                raise LLMClientError(last_error) from exc
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                raise LLMClientError('模型服务返回了无法解析的数据，请稍后重试') from exc
+        # 理论不可达（重试后必然抛出），防御性返回
+        raise LLMClientError(last_error or '模型服务请求失败，请稍后重试')
+
+    @staticmethod
+    def _extract_error_message(body_text, status):
+        """从错误响应体中提取 error.message 字段；失败则回退为通用中文提示。
+
+        将 HTTP 状态码与纯文本拼接后再做关键词翻译，使 401/403/429/5xx 等
+        即使没有命中文本关键词，也能按状态码给出准确的中文文案。
+        """
+        message = ''
+        try:
+            data = json.loads(body_text)
+            error = data.get('error') or {}
+            if isinstance(error, dict):
+                message = str(error.get('message', '') or '').strip()
+            elif isinstance(error, str):
+                message = error.strip()
+        except (json.JSONDecodeError, AttributeError, ValueError):
+            pass
+        if not message:
+            message = body_text[:200] if body_text else ''
+        combined = f'HTTP {status} {message}'.strip()
+        translated = friendly_error_message(combined)
+        # combined 未命中任何关键词时 friendly_error_message 会返回兜底文案；
+        # 若纯 message 含可识别关键词（如 context length），单独再试一次更准确。
+        if translated.startswith('操作失败'):
+            translated = friendly_error_message(message)
+        return translated
+
+    def _post_stream(self, path, payload, timeout=None):
+        """POST JSON 并以 SSE 逐行产出 `data:` 后的 JSON 对象。"""
+        url = f'{self.base_url}{path}'
+        timeout = timeout or Config.LLM_TIMEOUT_SECONDS
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers=self.headers,
+            method='POST',
+        )
+        try:
+            response = urllib.request.urlopen(request, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            body_text = ''
+            try:
+                body_text = exc.read().decode('utf-8', errors='replace')
+            except Exception:
+                pass
+            raise LLMClientError(self._extract_error_message(body_text, exc.code)) from exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            raise LLMClientError(friendly_error_message(exc)) from exc
+
+        try:
+            for raw_line in response:
+                line = raw_line.decode('utf-8', errors='replace').strip()
+                if not line or not line.startswith('data:'):
+                    continue
+                data = line[5:].strip()
+                if data == '[DONE]':
+                    break
+                try:
+                    obj = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                yield obj
+        finally:
+            close = getattr(response, 'close', None)
+            if callable(close):
+                close()
+
+    # ---------- 对外 API ----------
+
+    def embed(self, texts):
+        """批量文本向量化（Style RAG 使用）。
+
+        当前仅支持硅基流动 BAAI/bge-m3（OpenAI 兼容 embeddings 端点），
+        中文语料效果最佳且费用极低。
+        :param texts: 文本列表
+        :return: list[list[float]]，与输入顺序一一对应
+        """
+        if self.provider != 'siliconflow':
+            raise LLMClientError('当前仅支持硅基流动（siliconflow）的 Embedding 服务')
+        model = Config.EMBEDDING_MODEL
+        vectors = []
+        for offset in range(0, len(texts), Config.EMBEDDING_BATCH_SIZE):
+            batch = texts[offset:offset + Config.EMBEDDING_BATCH_SIZE]
+            payload = {'model': model, 'input': batch}
+            try:
+                _, data = self._post_json('/embeddings', payload)
+            except LLMClientError as exc:
+                raise LLMClientError(f'Embedding 调用失败：{exc}') from exc
+            items = data.get('data') or []
+            ordered = sorted(items, key=lambda item: item.get('index', 0))
+            vectors.extend([item['embedding'] for item in ordered])
+        return vectors
 
     def generate(
         self,
@@ -195,65 +350,58 @@ class LLMClient:
 
     def _generate_sync(self, params):
         """同步（非流式）生成"""
-        response = self.client.chat.completions.create(**params)
+        _, data = self._post_json('/chat/completions', self._build_body(params))
 
+        choices = data.get('choices') or []
+        if not choices:
+            raise LLMClientError('模型返回结果为空，请稍后重试')
+        message = choices[0].get('message') or {}
         result = {
-            'content': response.choices[0].message.content or '',
-            'reasoning_content': '',
+            'content': message.get('content') or '',
+            'reasoning_content': message.get('reasoning_content') or '',
             'usage': {
-                'prompt_tokens': response.usage.prompt_tokens if response.usage else 0,
-                'completion_tokens': response.usage.completion_tokens if response.usage else 0,
-                'total_tokens': response.usage.total_tokens if response.usage else 0,
+                'prompt_tokens': (data.get('usage') or {}).get('prompt_tokens', 0),
+                'completion_tokens': (data.get('usage') or {}).get('completion_tokens', 0),
+                'total_tokens': (data.get('usage') or {}).get('total_tokens', 0),
             },
         }
-
-        # 提取思维链内容
-        if hasattr(response.choices[0].message, 'reasoning_content'):
-            result['reasoning_content'] = response.choices[0].message.reasoning_content or ''
-
         return result
 
     def _generate_stream(self, params):
         """流式生成，返回生成器"""
-        response = self.client.chat.completions.create(**params)
-
-        for chunk in response:
+        for chunk in self._post_stream('/chat/completions', self._build_body(params)):
             data = {
                 'content': '',
                 'reasoning_content': '',
                 'finish_reason': None,
             }
-
-            if chunk.choices and len(chunk.choices) > 0:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    data['content'] = delta.content
-                if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                    data['reasoning_content'] = delta.reasoning_content
-                if chunk.choices[0].finish_reason:
-                    data['finish_reason'] = chunk.choices[0].finish_reason
-
+            choices = chunk.get('choices') or []
+            if choices:
+                delta = choices[0].get('delta') or {}
+                data['content'] = delta.get('content') or ''
+                data['reasoning_content'] = delta.get('reasoning_content') or ''
+                data['finish_reason'] = choices[0].get('finish_reason')
             yield data
 
     def generate_stream_aggregated(self, params):
         """流式生成并聚合结果"""
-        response = self.client.chat.completions.create(**params)
-
         full_reasoning = ''
         full_content = ''
 
         try:
-            for chunk in response:
-                if chunk.choices and len(chunk.choices) > 0:
-                    delta = chunk.choices[0].delta
-                    if delta.content:
-                        piece = delta.content
-                        full_content += piece
-                        yield {'type': 'content', 'data': piece}
-                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                        piece = delta.reasoning_content
-                        full_reasoning += piece
-                        yield {'type': 'reasoning', 'data': piece}
+            for chunk in self._post_stream('/chat/completions', self._build_body(params)):
+                choices = chunk.get('choices') or []
+                if not choices:
+                    continue
+                delta = choices[0].get('delta') or {}
+                if delta.get('content'):
+                    piece = delta['content']
+                    full_content += piece
+                    yield {'type': 'content', 'data': piece}
+                if delta.get('reasoning_content'):
+                    piece = delta['reasoning_content']
+                    full_reasoning += piece
+                    yield {'type': 'reasoning', 'data': piece}
 
             yield {
                 'type': 'done',
@@ -263,6 +411,4 @@ class LLMClient:
                 },
             }
         finally:
-            close_response = getattr(response, 'close', None)
-            if callable(close_response):
-                close_response()
+            pass

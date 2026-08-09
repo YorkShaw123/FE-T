@@ -1,10 +1,6 @@
-# -*- mode: python ; coding: utf-8 -*-
-"""Windows 可执行文件版本信息（PyInstaller version= 参数）。
-
-给 forestar-server.exe 注入标准的文件版本/产品信息，
-使资源管理器属性页可见、并降低部分杀软对"无版本信息程序"的误报。
-"""
-
+# Windows 可执行文件版本信息（PyInstaller version= 参数）。
+# 注意：PyInstaller 6.x 使用 eval() 解析本文件，因此只能包含单个 VSVersionInfo 表达式，
+# 不能有 docstring、import 或变量赋值。
 VSVersionInfo(
     ffi=FixedFileInfo(
         filevers=(1, 0, 0, 0),

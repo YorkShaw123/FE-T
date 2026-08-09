@@ -1,5 +1,5 @@
 flask==3.1.1
 flask-sqlalchemy==3.1.1
-openai==1.109.1
-python-dotenv==1.1.1
 olefile==0.47
+# Style RAG 向量矩阵计算（检索余弦相似度）
+numpy==2.0.2

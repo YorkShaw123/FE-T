@@ -187,6 +187,100 @@ class StyleExcerpt(db.Model):
         }
 
 
+class StyleCorpus(db.Model):
+    """海量风格语料库（Style RAG 数据源）。
+
+    与 style_profiles（单篇范例文章的 Style Card）相互独立：
+    语料库面向百万字级批量导入，切片后向量化，生成时按场景混合检索。
+    """
+    __tablename__ = 'style_corpora'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, default='')
+    source_filename = db.Column(db.String(300), default='')
+    total_chars = db.Column(db.Integer, nullable=False, default=0)
+    chunk_count = db.Column(db.Integer, nullable=False, default=0)
+    # 索引状态：empty(未导入) / imported(已导入未向量化) / indexed(已向量化可检索)
+    index_status = db.Column(db.String(30), nullable=False, default='empty')
+    embedding_model = db.Column(db.String(100), default='')
+    embedding_dim = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=utcnow)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
+
+    chunks = db.relationship('StyleChunk', backref=db.backref(
+        'corpus', cascade='all, delete', passive_deletes=True,
+    ), cascade='all, delete-orphan', passive_deletes=True,
+        order_by='StyleChunk.source_order')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description or '',
+            'source_filename': self.source_filename or '',
+            'total_chars': self.total_chars,
+            'chunk_count': self.chunk_count,
+            'index_status': self.index_status,
+            'embedding_model': self.embedding_model or '',
+            'embedding_dim': self.embedding_dim,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class StyleChunk(db.Model):
+    """语料库中的风格切片，含标签元数据与向量（BLOB）。
+
+    向量以 float32 序列化后存入 embedding_blob；检索时一次性加载为
+    NumPy 矩阵做余弦相似度（4000×1024 仅占 16MB 内存，无需向量数据库）。
+    """
+    __tablename__ = 'style_chunks'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    corpus_id = db.Column(
+        db.Integer,
+        db.ForeignKey('style_corpora.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    content = db.Column(db.Text, nullable=False)
+    content_hash = db.Column(db.String(64), nullable=False, index=True)
+    source_order = db.Column(db.Integer, nullable=False, default=0)
+    char_count = db.Column(db.Integer, nullable=False, default=0)
+    # 规则打标元数据：场景/节奏/叙述视角（用于硬过滤）
+    scene_type = db.Column(db.String(50), nullable=False, default='mixed', index=True)
+    pacing = db.Column(db.String(30), nullable=False, default='medium')
+    pov = db.Column(db.String(80), default='')
+    emotion = db.Column(db.String(200), default='')
+    dialogue_ratio = db.Column(db.Float, nullable=False, default=0.0)
+    # 向量（float32 二进制 BLOB）
+    embedding_blob = db.Column(db.LargeBinary)
+    embedding_model = db.Column(db.String(100), default='')
+    embedding_dim = db.Column(db.Integer, nullable=False, default=0)
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    def to_dict(self, include_content=True):
+        data = {
+            'id': self.id,
+            'corpus_id': self.corpus_id,
+            'source_order': self.source_order,
+            'char_count': self.char_count,
+            'scene_type': self.scene_type,
+            'pacing': self.pacing,
+            'pov': self.pov,
+            'emotion': self.emotion,
+            'dialogue_ratio': self.dialogue_ratio,
+            'embedding_model': self.embedding_model or '',
+            'embedding_dim': self.embedding_dim,
+            'is_enabled': self.is_enabled,
+        }
+        if include_content:
+            data['content'] = self.content
+        return data
+
+
 class GenerationRecord(db.Model):
     """生成记录模型
     保存每次AI生成的文章及所有上下文信息

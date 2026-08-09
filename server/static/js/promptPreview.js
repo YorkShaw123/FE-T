@@ -5,6 +5,7 @@
 import { $, api, toast, escapeHtml, safeBind } from './utils.js';
 import { getActiveTemplateIds } from './state.js';
 import { getWorkspaceStyleStrength, getWorkspaceStyleMode } from './styleSettings.js';
+import { getSelectedCorpusIds, getEmbeddingApiKey } from './styleCorpora.js';
 
 /** 展开/收起提示词预览抽屉 */
 export function setPromptPreviewDrawer(open) {
@@ -58,7 +59,10 @@ export function buildPromptPreviewPayload() {
         reasoning_effort: 'high',
         structured_prompt_enabled: $('#structured-prompt-enabled').checked,
         style_mode: getWorkspaceStyleMode(),
-        scene_type: $('#style-scene-type')?.value || 'auto',
+        scene_type: 'auto',
+        // Style RAG：已勾选的语料库 + Embedding 密钥（缺省回退顶部 LLM 密钥）
+        style_corpus_ids: getSelectedCorpusIds(),
+        embedding_api_key: getEmbeddingApiKey() || $('#api-key-input')?.value.trim() || '',
     };
 }
 
@@ -99,12 +103,19 @@ function renderStyleSelection(metadata, styleMode) {
         transition: '转场', narration: '叙事', mixed: '综合',
     };
     const excerpts = metadata.selected_excerpts || [];
-    const modeText = metadata.selection_mode === 'scene_retrieval'
-        ? `已按“${sceneLabels[metadata.resolved_scene_type] || '综合'}”场景检索`
-        : '片段库尚未建立，暂用代表性开头';
+    let modeText;
+    if (metadata.selection_mode === 'style_rag') {
+        modeText = `已从 ${excerpts.length} 个风格语料库片段中混合检索（场景 ${
+            sceneLabels[metadata.resolved_scene_type] || metadata.resolved_scene_type || '自动'
+        }）`;
+    } else if (metadata.selection_mode === 'scene_retrieval') {
+        modeText = `已按“${sceneLabels[metadata.resolved_scene_type] || '综合'}”场景检索`;
+    } else {
+        modeText = '片段库尚未建立，暂用代表性开头';
+    }
     const cards = excerpts.map(item => `
         <div class="style-selection-item">
-            <div><strong>${escapeHtml(item.template_name)}</strong><span>${sceneLabels[item.scene_type] || item.scene_type} · ${item.pace} · ${item.char_count} 字</span></div>
+            <div><strong>${escapeHtml(item.template_name || item.source || '风格片段')}</strong><span>${sceneLabels[item.scene_type] || item.scene_type} · ${item.pace || item.pacing || ''} · ${item.char_count} 字</span></div>
             <small>评分 ${item.score} · ${escapeHtml((item.reasons || []).join('、') || '综合匹配')}</small>
         </div>
     `).join('');

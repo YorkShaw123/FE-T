@@ -72,6 +72,62 @@ def apply_sqlite_migrations(db):
         'CREATE INDEX IF NOT EXISTS ix_style_excerpts_profile_scene '
         'ON style_excerpts (style_profile_id, scene_type, is_enabled, source_order)'
     ))
+
+    # ---- Style RAG：海量风格语料库（独立于单篇范例 Style Card）----
+    db.session.execute(db.text(
+        """
+        CREATE TABLE IF NOT EXISTS style_corpora (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            source_filename TEXT DEFAULT '',
+            total_chars INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            index_status VARCHAR(30) NOT NULL DEFAULT 'empty',
+            embedding_model VARCHAR(100) DEFAULT '',
+            embedding_dim INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME,
+            updated_at DATETIME
+        )
+        """
+    ))
+    db.session.execute(db.text(
+        """
+        CREATE TABLE IF NOT EXISTS style_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            corpus_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            content_hash VARCHAR(64) NOT NULL,
+            source_order INTEGER NOT NULL DEFAULT 0,
+            char_count INTEGER NOT NULL DEFAULT 0,
+            scene_type VARCHAR(50) NOT NULL DEFAULT 'mixed',
+            pacing VARCHAR(30) NOT NULL DEFAULT 'medium',
+            pov VARCHAR(80) DEFAULT '',
+            emotion VARCHAR(200) DEFAULT '',
+            dialogue_ratio FLOAT NOT NULL DEFAULT 0.0,
+            embedding_blob BLOB,
+            embedding_model VARCHAR(100) DEFAULT '',
+            embedding_dim INTEGER NOT NULL DEFAULT 0,
+            is_enabled BOOLEAN NOT NULL DEFAULT 1,
+            created_at DATETIME,
+            FOREIGN KEY (corpus_id) REFERENCES style_corpora(id) ON DELETE CASCADE
+        )
+        """
+    ))
+    db.session.execute(db.text(
+        'CREATE INDEX IF NOT EXISTS ix_style_chunks_corpus '
+        'ON style_chunks (corpus_id, source_order)'
+    ))
+    db.session.execute(db.text(
+        'CREATE INDEX IF NOT EXISTS ix_style_chunks_scene '
+        'ON style_chunks (corpus_id, scene_type, pacing, is_enabled)'
+    ))
+    # FTS5 全文索引（BM25 词汇级检索）；trigram tokenizer 对中文友好。
+    # 依赖 Python 内置 SQLite 的 FTS5 支持（官方 Python 3.11+ 默认开启）。
+    db.session.execute(db.text(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS style_chunks_fts "
+        "USING fts5(content, tokenize='trigram', content_rowid='id')"
+    ))
     db.session.commit()
 
 

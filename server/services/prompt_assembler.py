@@ -30,6 +30,18 @@ STYLE_STRENGTH_CONSTRAINTS = {
     ),
 }
 
+# Style RAG 兜底查询：当剧情设定与前置文章都为空时，按当前场景标签检索风格片段。
+# 注意 trigram 分词要求 ≥3 字符连续串，2 字词会被 FTS5 忽略。
+SCENE_FALLBACK_QUERIES = {
+    'dialogue': '他说道 她笑道 低声问道 声音平静',
+    'action': '刀锋出鞘 挥拳扑向 脚步急促 厮杀',
+    'psychology': '内心挣扎 念头翻涌 回忆往事 思绪纷乱',
+    'environment': '夜色如水 月光淡淡 雨水敲打 街道空旷',
+    'transition': '数日之后 转眼之间 离开此地 回到家中',
+    'narration': '他站起身 她转过头 缓缓开口 静静看着',
+    'mixed': '人物动作 场景描写 情绪起伏 语言节奏',
+}
+
 
 def extract_variables(text):
     """从文本中提取所有变量名"""
@@ -235,8 +247,16 @@ def assemble_style_pipeline_messages(
     style_strength='light',
     system_prompt='',
     scene_type='auto',
+    style_corpus_ids=(),
+    embedding_api_key='',
 ):
-    """使用有效 Style Card 构建智能风格消息；无有效卡时返回 ``(None, metadata)``。"""
+    """构建智能风格消息：Style RAG 语料库检索 + Style Card。
+
+    当启用风格语料库（style_corpus_ids 非空）时，优先从海量语料库动态检索
+    与当前场景最匹配的风格片段（向量 + BM25 混合检索），替代旧版
+    "静态从单个范例模板切片"；Style Card 仍作为补充规范存在。
+    无可用卡片且语料库无结果时返回 ``(None, metadata)``。
+    """
     from services.style_profile_service import style_source_hash
 
     variable_values = variable_values or {}
@@ -276,19 +296,53 @@ def assemble_style_pipeline_messages(
         'selected_excerpts': [],
         'selection_mode': '',
         'resolved_scene_type': 'mixed',
+        'rag': {
+            'enabled': bool(style_corpus_ids),
+            'hit': False,
+            'corpus_ids': list(style_corpus_ids or []),
+        },
     }
-    if not usable:
-        metadata['fallback_reason'] = '没有可用且未过期的 Style Card'
-        return None, metadata
 
-    usable.sort(key=lambda item: (not item[1].is_primary, item[0].sort_order, item[0].id))
-    usable = usable[:3]
     style_strength = style_strength if style_strength in {'light', 'medium', 'strict'} else 'light'
-
     grouped = {key: [] for key in ('background', 'character', 'plot', 'constraint')}
     for template in active:
         if template.category in grouped:
             grouped[template.category].append(fill_variables(template.content, variable_values).strip())
+
+    # 检索上下文：剧情设定 + 前置文章（局部）；两者皆空时用场景兜底查询
+    query_text = '\n'.join(grouped['plot']) + '\n' + (previous_article or '')[-1200:]
+    if not query_text.strip():
+        query_text = SCENE_FALLBACK_QUERIES.get(scene_type, SCENE_FALLBACK_QUERIES['mixed'])
+
+    # ---- Style RAG：从海量语料库动态检索风格片段（优先于静态模板切片）----
+    rag_examples = []
+    if style_corpus_ids:
+        try:
+            from services.style_rag_service import hybrid_search_style
+            items, rag_search_meta = hybrid_search_style(
+                query_text=query_text,
+                corpus_ids=style_corpus_ids,
+                scene_type=None if scene_type == 'auto' else scene_type,
+                top_k=3,
+                api_key=embedding_api_key,
+            )
+            if items:
+                rag_examples = items
+                metadata['rag'].update({
+                    'hit': True,
+                    'count': len(items),
+                    'meta': rag_search_meta,
+                })
+        except Exception:
+            # RAG 检索失败不阻断生成，回退到原有切片逻辑
+            metadata['rag']['error'] = '检索失败，已回退'
+
+    if not usable and not rag_examples:
+        metadata['fallback_reason'] = '没有可用且未过期的 Style Card，且语料库检索无结果'
+        return None, metadata
+
+    usable.sort(key=lambda item: (not item[1].is_primary, item[0].sort_order, item[0].id))
+    usable = usable[:3]
 
     style_cards = []
     for index, (template, profile, card) in enumerate(usable, start=1):
@@ -305,53 +359,79 @@ def assemble_style_pipeline_messages(
             'card': card,
         })
 
-    from services.style_excerpt_service import select_style_excerpts
-    query_text = '\n'.join(grouped['plot']) + '\n' + (previous_article or '')[-1200:]
-    selected, resolved_scene_type = select_style_excerpts(
-        usable,
-        scene_type=scene_type,
-        query_text=query_text,
-        style_strength=style_strength,
-    )
-    metadata['resolved_scene_type'] = resolved_scene_type
     examples = []
-    if selected:
-        metadata['selection_mode'] = 'scene_retrieval'
-        for index, excerpt in enumerate(selected, start=1):
+    if rag_examples:
+        # Style RAG：片段来自海量语料库
+        metadata['selection_mode'] = 'style_rag'
+        metadata['resolved_scene_type'] = scene_type
+        for index, excerpt in enumerate(rag_examples, start=1):
             excerpt_content = fill_variables(excerpt['content'], variable_values)
-            reasons = '、'.join(excerpt['reasons']) or '综合评分'
+            reasons = '、'.join(excerpt['reasons']) or '综合检索'
             examples.append(
-                f'<example index="{index}" template="{excerpt["template_name"]}" '
-                f'scene_type="{excerpt["scene_type"]}" pace="{excerpt["pace"]}" '
+                f'<example index="{index}" source="{excerpt["corpus_name"] or "风格语料库"}" '
+                f'scene_type="{excerpt["scene_type"]}" pace="{excerpt["pacing"]}" '
                 f'selection_reason="{reasons}">\n{excerpt_content}\n</example>'
             )
             metadata['selected_excerpts'].append({
-                key: excerpt[key] for key in (
-                    'id', 'style_profile_id', 'source_order', 'scene_type', 'pov',
-                    'emotion', 'dialogue_ratio', 'pace', 'tags', 'functions',
-                    'is_pinned', 'score', 'reasons', 'template_name', 'char_count',
-                )
+                'id': excerpt['id'],
+                'corpus_id': excerpt['corpus_id'],
+                'source': excerpt['corpus_name'] or '风格语料库',
+                'scene_type': excerpt['scene_type'],
+                'pov': excerpt['pov'],
+                'emotion': excerpt['emotion'],
+                'dialogue_ratio': excerpt['dialogue_ratio'],
+                'pace': excerpt['pacing'],
+                'score': excerpt['score'],
+                'reasons': excerpt['reasons'],
+                'char_count': excerpt['char_count'],
             })
     else:
-        # 尚未生成片段时仍保留第一里程碑的少量代表性文本回退。
-        metadata['selection_mode'] = 'representative_fallback'
-        for index, (template, _, _) in enumerate(usable, start=1):
-            excerpt_content = fill_variables(template.content, variable_values).strip()[:1600]
-            examples.append(
-                f'<example index="{index}" template="{template.name}" '
-                f'selection_reason="尚未建立片段库，使用代表性开头">\n'
-                f'{excerpt_content}\n</example>'
-            )
+        from services.style_excerpt_service import select_style_excerpts
+        selected, resolved_scene_type = select_style_excerpts(
+            usable,
+            scene_type=scene_type,
+            query_text=query_text,
+            style_strength=style_strength,
+        )
+        metadata['resolved_scene_type'] = resolved_scene_type
+        if selected:
+            metadata['selection_mode'] = 'scene_retrieval'
+            for index, excerpt in enumerate(selected, start=1):
+                excerpt_content = fill_variables(excerpt['content'], variable_values)
+                reasons = '、'.join(excerpt['reasons']) or '综合评分'
+                examples.append(
+                    f'<example index="{index}" template="{excerpt["template_name"]}" '
+                    f'scene_type="{excerpt["scene_type"]}" pace="{excerpt["pace"]}" '
+                    f'selection_reason="{reasons}">\n{excerpt_content}\n</example>'
+                )
+                metadata['selected_excerpts'].append({
+                    key: excerpt[key] for key in (
+                        'id', 'style_profile_id', 'source_order', 'scene_type', 'pov',
+                        'emotion', 'dialogue_ratio', 'pace', 'tags', 'functions',
+                        'is_pinned', 'score', 'reasons', 'template_name', 'char_count',
+                    )
+                })
+        else:
+            # 尚未生成片段时仍保留第一里程碑的少量代表性文本回退。
+            metadata['selection_mode'] = 'representative_fallback'
+            for index, (template, _, _) in enumerate(usable, start=1):
+                excerpt_content = fill_variables(template.content, variable_values).strip()[:1600]
+                examples.append(
+                    f'<example index="{index}" template="{template.name}" '
+                    f'selection_reason="尚未建立片段库，使用代表性开头">\n'
+                    f'{excerpt_content}\n</example>'
+                )
 
     system_parts = [system_prompt.strip()]
     system_parts.append(
-        '你是小说正文写作引擎。Style Card 是本次写作的可执行风格规范，不是故事资料。'
-        '优先执行其中的正向行为、视角限制和可检查规则；不得照抄范例中的人物、地点、情节、'
+        '你是小说正文写作引擎。以下内容是可执行风格规范与参考片段，不是故事资料。'
+        '优先执行其中的正向行为、句式节奏、叙述视角和可检查规则；不得照抄片段中的人物、地点、情节、'
         '专有名词或独特句子。不得用模型默认的解释型、总结型文风替代风格规范。'
     )
     if custom_prefix and custom_prefix.strip():
         system_parts.append(f'【本次系统级补充要求】\n{custom_prefix.strip()}')
-    system_parts.append('\n\n'.join(style_cards))
+    if style_cards:
+        system_parts.append('\n\n'.join(style_cards))
     if style_strength in STYLE_STRENGTH_CONSTRAINTS:
         system_parts.append(STYLE_STRENGTH_CONSTRAINTS[style_strength])
     messages = [{'role': 'system', 'content': '\n\n'.join(part for part in system_parts if part)}]

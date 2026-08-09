@@ -106,8 +106,14 @@ def _build_smart_style_messages(
     previous_article='',
     style_strength='light',
     scene_type='auto',
+    style_corpus_ids=(),
+    embedding_api_key='',
 ):
-    """构建智能风格消息，并返回本次 Style Card 快照元数据。"""
+    """构建智能风格消息，并返回本次 Style Card 快照元数据。
+
+    :param style_corpus_ids: Style RAG 语料库 ID 列表；非空时优先走海量语料动态检索
+    :param embedding_api_key: Embedding API 密钥（与 LLM 密钥分开，用于向量化检索）
+    """
     compressed_previous = ''
     if previous_article and previous_article.strip():
         compressed_previous = (
@@ -124,6 +130,8 @@ def _build_smart_style_messages(
         style_strength=style_strength,
         system_prompt=Config.GENERATION_SYSTEM_PROMPT,
         scene_type=scene_type,
+        style_corpus_ids=style_corpus_ids or (),
+        embedding_api_key=embedding_api_key,
     )
 
 
@@ -154,6 +162,8 @@ def generate_article(
     structured_prompt_enabled=False,
     style_mode='legacy',
     scene_type='auto',
+    style_corpus_ids=(),
+    embedding_api_key='',
 ):
     """
     生成文章的核心流程
@@ -216,6 +226,8 @@ def generate_article(
             previous_article=previous_article,
             style_strength=style_strength,
             scene_type=scene_type,
+            style_corpus_ids=style_corpus_ids or (),
+            embedding_api_key=embedding_api_key,
         )
         if messages:
             assembled_prompt = _messages_preview(messages)
@@ -490,6 +502,8 @@ def get_assembled_preview(
     structured_prompt_enabled=False,
     style_mode='legacy',
     scene_type='auto',
+    style_corpus_ids=(),
+    embedding_api_key='',
 ):
     """
     预览组装后的提示词（不调用API）
@@ -511,6 +525,8 @@ def get_assembled_preview(
             previous_article=previous_article,
             style_strength=style_strength,
             scene_type=scene_type,
+            style_corpus_ids=style_corpus_ids or (),
+            embedding_api_key=embedding_api_key,
         )
         if messages:
             assembled = _messages_preview(messages)

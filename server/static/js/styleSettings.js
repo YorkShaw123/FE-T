@@ -23,9 +23,8 @@ export function updateWorkspaceStyleModeHelp() {
     const descriptions = {
         legacy: '沿用当前范例文章拼接逻辑，不改变任何原有行为。',
         smart: '使用有效 Style Card 和少量代表性范例；缺少风格卡时自动回退原文拼接。',
-        off: '本次生成不发送任何“范例文章/参考风格”模板。',
     };
-    help.textContent = descriptions[mode];
+    help.textContent = descriptions[mode] || descriptions.legacy;
     if (structured) {
         // 智能风格链推荐开启结构化消息，但仍允许用户手动控制
         structured.disabled = false;
@@ -33,8 +32,9 @@ export function updateWorkspaceStyleModeHelp() {
             ? '智能风格链推荐开启结构化消息，你仍可手动切换'
             : '关闭时完整使用原有字符串拼装格式';
     }
-    const sceneControl = $('#style-scene-control');
-    if (sceneControl) sceneControl.style.display = mode === 'smart' ? '' : 'none';
+    // Style RAG 语料库控制区仅在智能风格链模式下展示
+    const ragControl = $('#style-rag-control');
+    if (ragControl) ragControl.style.display = mode === 'smart' ? '' : 'none';
 }
 
 /** 根据风格强度更新说明文案 */

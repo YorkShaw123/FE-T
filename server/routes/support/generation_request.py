@@ -25,6 +25,9 @@ class GenerationRequest:
     structured_prompt_enabled: bool = False
     style_mode: str = 'legacy'
     scene_type: str = 'auto'
+    # Style RAG：语料库 ID 列表与 Embedding API 密钥（与 LLM 密钥分开）
+    style_corpus_ids: tuple = field(default_factory=tuple)
+    embedding_api_key: str = ''
 
     @classmethod
     def from_mapping(cls, data):
@@ -48,6 +51,13 @@ class GenerationRequest:
             'transition', 'narration', 'mixed',
         }:
             raise GenerationError('scene_type 参数无效')
+        raw_corpus_ids = data.get('style_corpus_ids') or ()
+        if not isinstance(raw_corpus_ids, (list, tuple)):
+            raise GenerationError('style_corpus_ids 必须是数组')
+        try:
+            style_corpus_ids = tuple(int(item) for item in raw_corpus_ids)
+        except (TypeError, ValueError) as exc:
+            raise GenerationError('style_corpus_ids 只能包含整数') from exc
         return cls(
             api_key=str(data.get('api_key', '') or ''),
             provider=str(data.get('provider', 'deepseek') or 'deepseek'),
@@ -66,6 +76,8 @@ class GenerationRequest:
             structured_prompt_enabled=bool(data.get('structured_prompt_enabled', False)),
             style_mode=style_mode,
             scene_type=scene_type,
+            style_corpus_ids=style_corpus_ids,
+            embedding_api_key=str(data.get('embedding_api_key', '') or ''),
         )
 
     def load_templates(self):
@@ -100,6 +112,8 @@ class GenerationRequest:
             'structured_prompt_enabled': self.structured_prompt_enabled,
             'style_mode': self.style_mode,
             'scene_type': self.scene_type,
+            'style_corpus_ids': self.style_corpus_ids,
+            'embedding_api_key': self.embedding_api_key,
         }
 
     def preview_kwargs(self):

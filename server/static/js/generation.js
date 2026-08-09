@@ -5,6 +5,7 @@
 import { $, api, toast, safeBind, formatArticle, getArticleText } from './utils.js';
 import { state, getActiveTemplateIds } from './state.js';
 import { getWorkspaceStyleStrength, getWorkspaceStyleMode } from './styleSettings.js';
+import { getSelectedCorpusIds, getEmbeddingApiKey } from './styleCorpora.js';
 import { fetchPromptPreview, renderTokenBudget, renderStyleFallbackWarning } from './promptPreview.js';
 
 // ==================== 去AI味开关 ====================
@@ -143,7 +144,10 @@ async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
             style_strength: getWorkspaceStyleStrength(),
             structured_prompt_enabled: $('#structured-prompt-enabled').checked,
             style_mode: getWorkspaceStyleMode(),
-            scene_type: $('#style-scene-type')?.value || 'auto',
+            scene_type: 'auto',
+            // Style RAG：已勾选的语料库 + Embedding 密钥（缺省回退顶部 LLM 密钥）
+            style_corpus_ids: getSelectedCorpusIds(),
+            embedding_api_key: getEmbeddingApiKey() || apiKey,
         }),
     });
 

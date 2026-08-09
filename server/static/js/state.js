@@ -32,7 +32,6 @@ export const DRAFT_FIELDS = [
     'deai-prompt', 'deai-enabled', 'provider-select', 'model-select',
     'thinking-enabled',
     'structured-prompt-enabled',
-    'style-scene-type',
 ];
 
 /** 模板分类展示元信息（图标与名称） */
