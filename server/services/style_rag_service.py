@@ -252,12 +252,14 @@ def import_corpus_text(corpus_id, text, filename=''):
     if not chunks:
         raise GenerationError('未能从文本中切分出有效片段')
 
-    # 清空旧内容（含 FTS5 残留）
-    StyleChunk.query.filter_by(corpus_id=corpus_id).delete(synchronize_session=False)
+    # 清空旧内容：必须先清理 FTS5（其 rowid 依赖 style_chunks.id），再删 style_chunks。
+    # 若先执行 ORM delete，随后的 execute() 会触发 autoflush 提前删掉 style_chunks，
+    # 导致 FTS 残留旧行，新切片 id 复用后插入 FTS 触发 rowid 冲突（IntegrityError）。
     db.session.execute(db.text(
         "DELETE FROM style_chunks_fts WHERE rowid IN "
         "(SELECT id FROM style_chunks WHERE corpus_id = :cid)"
     ), {'cid': corpus_id})
+    StyleChunk.query.filter_by(corpus_id=corpus_id).delete(synchronize_session=False)
 
     now = _now()
     inserted = []
@@ -305,11 +307,12 @@ def list_chunks(corpus_id, page=1, per_page=50):
 
 def clear_corpus_chunks(corpus_id):
     corpus = get_corpus(corpus_id)
-    StyleChunk.query.filter_by(corpus_id=corpus_id).delete(synchronize_session=False)
+    # 同样必须先清 FTS5 再删 style_chunks，避免 autoflush 顺序导致 FTS 残留
     db.session.execute(db.text(
         "DELETE FROM style_chunks_fts WHERE rowid IN "
         "(SELECT id FROM style_chunks WHERE corpus_id = :cid)"
     ), {'cid': corpus_id})
+    StyleChunk.query.filter_by(corpus_id=corpus_id).delete(synchronize_session=False)
     corpus.chunk_count = 0
     corpus.total_chars = 0
     corpus.index_status = 'empty'
