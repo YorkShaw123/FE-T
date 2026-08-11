@@ -8,10 +8,23 @@ export const $ = (sel, ctx) => (ctx || document).querySelector(sel);
 /** 查询元素数组 */
 export const $$ = (sel, ctx) => [...(ctx || document).querySelectorAll(sel)];
 
-/** 统一 API 请求：自动携带 JSON 头并检查响应 success 标志 */
-export const api = (url, opts = {}) => fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts })
-    .then(r => r.json())
-    .then(d => { if (!d.success) throw new Error(d.error || '请求失败'); return d; });
+/** 统一 API 请求：合并请求头，并统一处理 HTTP、JSON 与业务错误。 */
+export async function api(url, opts = {}) {
+    const headers = new Headers(opts.headers || {});
+    if (opts.body && !(opts.body instanceof FormData) && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
+    }
+    const response = await fetch(url, { ...opts, headers });
+    const contentType = response.headers.get('content-type') || '';
+    let data;
+    if (contentType.includes('application/json')) {
+        data = await response.json().catch(() => null);
+    }
+    if (!response.ok || !data?.success) {
+        throw new Error(data?.error || `请求失败（HTTP ${response.status}）`);
+    }
+    return data;
+}
 
 /** 顶部轻提示；duration 为显示时长（毫秒），默认 3.5 秒 */
 export function toast(msg, type = 'info', duration = 3500) {

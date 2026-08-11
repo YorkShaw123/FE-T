@@ -3,8 +3,10 @@ Forestar Editor - AI文字创作助手
 主应用入口
 """
 import os
+import secrets
 import shutil
 import sys
+from urllib.parse import urlsplit
 
 # 路径解析必须先于 config 导入执行，因为 config 的 SQLALCHEMY_DATABASE_URI
 # 在类定义时求值（对原始运行方式无影响）：
@@ -70,7 +72,7 @@ if not os.environ.get('DATABASE_URL'):
     _db_path = os.path.join(_resolve_data_dir(), 'forestar.db').replace('\\', '/')
     os.environ['DATABASE_URL'] = f'sqlite:///{_db_path}'
 
-from flask import Flask, render_template
+from flask import Flask, jsonify, render_template, request
 from config import config_by_name
 from database import init_db
 from routes.template_routes import template_bp
@@ -82,7 +84,7 @@ from routes.style_corpora_routes import style_corpora_bp
 def create_app(config_name=None):
     """应用工厂函数"""
     if config_name is None:
-        config_name = os.environ.get('FLASK_ENV', 'development')
+        config_name = os.environ.get('FLASK_ENV', 'production')
 
     app = Flask(
         __name__,
@@ -90,6 +92,8 @@ def create_app(config_name=None):
         static_folder=os.path.join(_RESOURCE_BASE, 'static'),
     )
     app.config.from_object(config_by_name.get(config_name, config_by_name['default']))
+    if not os.environ.get('SECRET_KEY'):
+        app.config['SECRET_KEY'] = secrets.token_urlsafe(32)
 
     # 首次运行时迁移 Web 版旧数据到统一数据目录
     _migrate_legacy_data()
@@ -105,6 +109,24 @@ def create_app(config_name=None):
 
     # 注册错误处理
     register_error_handlers(app)
+
+    @app.before_request
+    def reject_cross_origin_writes():
+        """阻止浏览器从其他站点向本地服务发起写请求。"""
+        if request.method not in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+            return None
+        origin = request.headers.get('Origin', '').strip()
+        if origin and urlsplit(origin).netloc.lower() != request.host.lower():
+            return jsonify({'success': False, 'error': '拒绝跨站写入请求'}), 403
+        return None
+
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('X-Frame-Options', 'DENY')
+        response.headers.setdefault('Referrer-Policy', 'no-referrer')
+        response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+        return response
 
     # 注册路由
     @app.route('/')

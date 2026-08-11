@@ -81,7 +81,7 @@ function renderCorpusManager(corpora) {
                 </div>
                 <div class="style-corpus-item-actions">
                     <label class="btn btn-outline btn-sm">导入
-                        <input type="file" accept=".txt,.md,.doc,.docx" hidden data-action="import">
+                        <input type="file" accept=".txt,.doc,.docx" hidden data-action="import">
                     </label>
                     <button class="btn btn-outline btn-sm" type="button" data-action="index">向量化</button>
                     <button class="btn btn-outline btn-sm" type="button" data-action="clear">清空</button>
@@ -157,14 +157,13 @@ async function importCorpusFile(corpusId, file) {
     try {
         const form = new FormData();
         form.append('file', file);
-        const { data } = await fetch(`/api/style-corpora/${corpusId}/import`, {
+        const response = await fetch(`/api/style-corpora/${corpusId}/import`, {
             method: 'POST',
             body: form,
-        }).then(r => r.json());
-        if (!data) {
-            toast('导入失败，请检查文件格式', 'error');
-            return;
-        }
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.success) throw new Error(result?.error || `HTTP ${response.status}`);
+        const data = result.data;
         toast(`导入完成：${data.chunk_count} 个风格片段，共 ${data.total_chars.toLocaleString()} 字`);
         loadCorporaList();
     } catch (e) {

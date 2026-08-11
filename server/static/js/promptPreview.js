@@ -6,6 +6,7 @@ import { $, api, toast, escapeHtml, safeBind } from './utils.js';
 import { getActiveTemplateIds } from './state.js';
 import { getWorkspaceStyleStrength, getWorkspaceStyleMode } from './styleSettings.js';
 import { getSelectedCorpusIds, getEmbeddingApiKey } from './styleCorpora.js';
+import { getWorkspaceVariableValues } from './templatePanel.js';
 
 /** 展开/收起提示词预览抽屉 */
 export function setPromptPreviewDrawer(open) {
@@ -47,7 +48,7 @@ export function renderStyleFallbackWarning(styleMode, styleMetadata) {
 /** 组装提示词预览请求负载 */
 export function buildPromptPreviewPayload() {
     return {
-        variable_values: {},
+        variable_values: getWorkspaceVariableValues(),
         previous_article: $('#previous-article').value,
         template_ids: getActiveTemplateIds(),
         style_strength: getWorkspaceStyleStrength(),

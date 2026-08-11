@@ -7,6 +7,7 @@ import { state, getActiveTemplateIds } from './state.js';
 import { getWorkspaceStyleStrength, getWorkspaceStyleMode } from './styleSettings.js';
 import { getSelectedCorpusIds, getEmbeddingApiKey } from './styleCorpora.js';
 import { fetchPromptPreview, renderTokenBudget, renderStyleFallbackWarning } from './promptPreview.js';
+import { getWorkspaceVariableValues } from './templatePanel.js';
 
 // ==================== 去AI味开关 ====================
 
@@ -139,7 +140,7 @@ async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
             deai_prompt: $('#deai-prompt').value,
             title: $('#article-title').value || '未命名',
             previous_article: $('#previous-article').value,
-            variable_values: {},
+            variable_values: getWorkspaceVariableValues(),
             template_ids: templateIds,
             style_strength: getWorkspaceStyleStrength(),
             structured_prompt_enabled: $('#structured-prompt-enabled').checked,

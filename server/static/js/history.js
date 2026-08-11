@@ -5,11 +5,15 @@
 import { $, $$, api, toast, escapeHtml, safeBind, formatArticle } from './utils.js';
 import { state } from './state.js';
 
+const HISTORY_PAGE_SIZE = 50;
+let currentHistoryPage = 1;
+
 /** 加载生成记录列表并渲染 */
-export async function loadHistoryList() {
+export async function loadHistoryList(page = currentHistoryPage) {
     try {
-        const data = await api('/api/generation/records');
+        const data = await api(`/api/generation/records?page=${page}&per_page=${HISTORY_PAGE_SIZE}`);
         const records = data.data.items;
+        currentHistoryPage = data.data.current_page || 1;
         state.historyRecords = records;
 
         const container = $('#history-list');
@@ -23,8 +27,9 @@ export async function loadHistoryList() {
             <input id="history-search" class="input-text" type="search"
                 placeholder="搜索标题、模型或正文摘要">
             <button id="btn-delete-all-records" class="btn btn-danger btn-sm" type="button">🗑 删除全部</button>
-        </div><div id="history-list-results"></div>`;
+        </div><div id="history-list-results"></div><div id="history-pagination" class="history-pagination"></div>`;
         renderHistoryRecords(records);
+        renderHistoryPagination(data.data);
         $('#history-search').addEventListener('input', event => {
             const query = event.target.value.trim().toLowerCase();
             renderHistoryRecords(state.historyRecords.filter(r =>
@@ -37,6 +42,19 @@ export async function loadHistoryList() {
     } catch (e) {
         console.error('加载历史记录失败:', e);
     }
+}
+
+function renderHistoryPagination(pagination) {
+    const container = $('#history-pagination');
+    if (!container) return;
+    const pages = pagination.pages || 1;
+    const page = pagination.current_page || 1;
+    container.innerHTML = `<button class="btn btn-outline btn-sm" type="button" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>上一页</button>
+        <span>第 ${page} / ${pages} 页 · 共 ${pagination.total || 0} 条</span>
+        <button class="btn btn-outline btn-sm" type="button" data-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>下一页</button>`;
+    $$('button[data-page]', container).forEach(button => {
+        button.addEventListener('click', () => loadHistoryList(Number(button.dataset.page)));
+    });
 }
 
 /** 渲染生成记录列表 */
@@ -53,7 +71,7 @@ function renderHistoryRecords(records) {
                     <div class="h-title">${escapeHtml(r.title)}</div>
                     <div class="h-preview">${escapeHtml(r.content_preview || '')}</div>
                     <div class="h-meta">
-                        <span>${r.model_used || '未知模型'}</span>
+                        <span>${escapeHtml(r.model_used || '未知模型')}</span>
                         ${r.has_deai ? '<span style="color:var(--accent-success)">已去AI味</span>' : ''}
                         ${r.has_edited ? '<span class="history-edited-badge">有修改版</span>' : ''}
                         <span>${new Date(r.created_at).toLocaleString('zh-CN')}</span>
@@ -105,7 +123,7 @@ async function toggleRecordPinned(recordId) {
             body: JSON.stringify({ pinned: !record.pinned }),
         });
         toast(record.pinned ? '已取消置顶' : '已置顶');
-        loadHistoryList();
+        loadHistoryList(currentHistoryPage);
     } catch (e) {
         toast('置顶失败: ' + e.message, 'error');
     }
@@ -121,7 +139,7 @@ async function deleteRecord(recordId) {
             $('#history-detail').style.display = 'none';
             state.currentRecordId = null;
         }
-        loadHistoryList();
+        loadHistoryList(currentHistoryPage);
     } catch (e) {
         toast('删除失败: ' + e.message, 'error');
     }
@@ -135,7 +153,7 @@ async function deleteAllRecords() {
         toast('所有记录已删除');
         $('#history-detail').style.display = 'none';
         state.currentRecordId = null;
-        loadHistoryList();
+        loadHistoryList(1);
     } catch (e) {
         toast('删除失败: ' + e.message, 'error');
     }
@@ -183,7 +201,7 @@ async function loadHistoryDetail(recordId) {
 
         $('#history-detail-title').textContent = record.title;
         $('#history-detail-meta').innerHTML = `
-            模型: ${record.model_used || '未知'} |
+            模型: ${escapeHtml(record.model_used || '未知')} |
             ${record.thinking_enabled ? '思考模式: 启用 | ' : ''}
             时间: ${new Date(record.created_at).toLocaleString('zh-CN')}
             ${record.rating ? ` | 评分: ${'⭐'.repeat(record.rating)}` : ''}

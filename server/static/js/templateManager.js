@@ -102,6 +102,11 @@ safeBind('#btn-export-templates', 'click', async () => {
             body: JSON.stringify({ format: 'json' }),
         });
 
+        if (!response.ok) {
+            const error = await response.json().catch(() => null);
+            throw new Error(error?.error || `HTTP ${response.status}`);
+        }
+
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

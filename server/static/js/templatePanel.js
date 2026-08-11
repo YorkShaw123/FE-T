@@ -5,6 +5,68 @@
 import { $, $$, api, toast, escapeHtml, safeBind } from './utils.js';
 import { state, categoryConfig } from './state.js';
 
+const VARIABLE_VALUES_KEY = 'forestar_workspace_variable_values_v1';
+
+function loadStoredVariableValues() {
+    try {
+        const value = JSON.parse(localStorage.getItem(VARIABLE_VALUES_KEY) || '{}');
+        return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch {
+        return {};
+    }
+}
+
+/** 收集工作台变量值，供提示词预览和正式生成共用。 */
+export function getWorkspaceVariableValues() {
+    const values = loadStoredVariableValues();
+    $$('#workspace-variables-list [data-variable]').forEach(input => {
+        values[input.dataset.variable] = input.value;
+    });
+    return values;
+}
+
+function renderWorkspaceVariables(grouped) {
+    const section = $('#workspace-variables-section');
+    const list = $('#workspace-variables-list');
+    if (!section || !list) return;
+    const variables = [];
+    const seen = new Set();
+    Object.values(grouped).flat().forEach(template => {
+        if (template.is_active === false || template.is_sample) return;
+        let names = template.variables || [];
+        if (typeof names === 'string') {
+            try { names = JSON.parse(names); } catch { names = []; }
+        }
+        (Array.isArray(names) ? names : []).forEach(name => {
+            const normalized = String(name || '').trim();
+            if (normalized && !seen.has(normalized)) {
+                seen.add(normalized);
+                variables.push(normalized);
+            }
+        });
+    });
+    section.hidden = variables.length === 0;
+    if (!variables.length) {
+        list.innerHTML = '';
+        return;
+    }
+    const stored = loadStoredVariableValues();
+    list.innerHTML = variables.map(name => `
+        <label class="workspace-variable-item">
+            <span>${escapeHtml(name)}</span>
+            <textarea class="input-textarea" rows="2" data-variable="${escapeHtml(name)}"
+                placeholder="填写 ${escapeHtml(name)}">${escapeHtml(stored[name] || '')}</textarea>
+        </label>
+    `).join('');
+    $$('[data-variable]', list).forEach(input => {
+        input.addEventListener('input', () => {
+            const values = loadStoredVariableValues();
+            values[input.dataset.variable] = input.value;
+            localStorage.setItem(VARIABLE_VALUES_KEY, JSON.stringify(values));
+        });
+    });
+}
+
 /** 加载并渲染工作台模板分组 */
 export async function loadWorkspaceTemplates() {
     const container = $('#template-panel-body');
@@ -17,6 +79,7 @@ export async function loadWorkspaceTemplates() {
             Object.fromEntries(Object.entries(data.data).map(([k, v]) => [k, v.length])));
         state.groupedTemplates = data.data;
         renderWorkspaceTemplates(data.data);
+        renderWorkspaceVariables(data.data);
     } catch (e) {
         console.error('[Forestar] 加载模板失败:', e);
         container.innerHTML = `<div style="padding:20px;text-align:center;">
@@ -107,6 +170,7 @@ async function toggleTemplateActive(card) {
         }
         // 重新渲染面板以更新开关状态和计数
         renderWorkspaceTemplates(state.groupedTemplates);
+        renderWorkspaceVariables(state.groupedTemplates);
     } catch (e) {
         toast('切换失败: ' + e.message, 'error');
     }

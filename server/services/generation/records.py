@@ -26,9 +26,12 @@ def update_record(record_id, **kwargs):
     record = get_record(record_id)
     if not record:
         raise GenerationError(f'记录不存在: {record_id}')
+    allowed_fields = {'title', 'edited_content', 'edit_history', 'rating', 'pinned', 'notes'}
+    unknown_fields = set(kwargs) - allowed_fields
+    if unknown_fields:
+        raise GenerationError(f'不允许更新字段: {", ".join(sorted(unknown_fields))}')
     for key, value in kwargs.items():
-        if hasattr(record, key):
-            setattr(record, key, value)
+        setattr(record, key, value)
     db.session.commit()
     return record
 

@@ -10,7 +10,8 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 class Config:
     """基础配置"""
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'forestar-editor-secret-key-change-in-production')
+    # 未显式配置时由应用工厂为每个进程生成随机密钥，避免发布包共享固定密钥。
+    SECRET_KEY = os.environ.get('SECRET_KEY', '')
 
     # 构建数据库URI（使用正斜杠确保跨平台兼容）
     _db_path = os.path.join(BASE_DIR, 'data', 'forestar.db').replace('\\', '/')
@@ -215,5 +216,5 @@ class ProductionConfig(Config):
 config_by_name = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
-    'default': DevelopmentConfig,
+    'default': ProductionConfig,
 }
