@@ -114,7 +114,9 @@ function renderWorkspaceTemplates(grouped) {
 
         visible.forEach(tpl => {
             const active = tpl.is_active !== false;
-            const preview = (tpl.content || '').replace(/\{\{.*?\}\}/g, '___').substring(0, 40);
+            const description = String(tpl.description || '').trim();
+            const preview = description
+                || (tpl.content || '').replace(/\{\{.*?\}\}/g, '___').substring(0, 40);
 
             html += `<div class="template-card ${active ? 'active' : ''}" data-id="${tpl.id}" data-cat="${catId}">
                 <span class="toggle-dot" data-action="toggle" title="点击切换启用/禁用"></span>

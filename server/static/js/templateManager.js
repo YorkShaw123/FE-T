@@ -48,7 +48,9 @@ function renderTemplateList(templates) {
     const results = $('#template-list-results', container);
     results.innerHTML = filtered.length ? filtered.map(tpl => {
         const active = tpl.is_active !== false;
-        const preview = tpl.content ? tpl.content.replace(/\{\{.*?\}\}/g, '___').substring(0, 60) : '';
+        const description = String(tpl.description || '').trim();
+        const preview = description
+            || (tpl.content ? tpl.content.replace(/\{\{.*?\}\}/g, '___').substring(0, 60) : '');
         const vars = tpl.variables ? (typeof tpl.variables === 'string' ? JSON.parse(tpl.variables) : tpl.variables).join(', ') : '';
         const updatedAt = tpl.updated_at ? new Date(tpl.updated_at).toLocaleString('zh-CN') : '';
         return `<div class="template-list-item ${active ? 'active' : ''}" data-id="${tpl.id}">
