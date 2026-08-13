@@ -1,6 +1,6 @@
 """
 大语言模型 API 客户端（轻量版）
-统一封装 DeepSeek、OpenAI、硅基流动 Kimi、爱化身等平台的调用逻辑
+统一封装 DeepSeek、OpenAI、Kimi、通义千问、智谱、Gemini、Grok 等平台
 支持思考模式（thinking mode）和 reasoning_effort 控制
 
 实现说明：
@@ -26,26 +26,25 @@ class LLMClientError(Exception):
 class LLMClient:
     """统一的大语言模型 API 客户端"""
 
-    def __init__(self, provider='deepseek', api_key=None, base_url=None):
+    def __init__(self, provider='deepseek', api_key=None):
         """
         初始化客户端
-        :param provider: 提供商名称（deepseek / openai / siliconflow / aihuashen / gemini）
+        :param provider: Config.LLM_PROVIDERS 中的提供商标识
         :param api_key: API密钥
-        :param base_url: 自定义 base_url
         """
         self.provider = provider
         provider_config = Config.LLM_PROVIDERS.get(provider, {})
 
-        if base_url:
-            self.base_url = base_url.rstrip('/')
-        else:
-            self.base_url = provider_config.get('base_url', 'https://api.deepseek.com').rstrip('/')
+        if provider not in Config.LLM_PROVIDERS:
+            raise LLMClientError('不支持的模型提供商')
+        # 上游地址只允许来自内置配置，不接受请求参数覆盖，避免携带密钥访问任意地址。
+        self.base_url = provider_config['base_url'].rstrip('/')
 
         if not api_key or not api_key.strip():
             raise LLMClientError('API密钥不能为空')
 
         # 输入框既兼容纯 Token，也兼容用户从文档中复制的 ``Bearer <TOKEN>``。
-        # 统一以 Authorization: Bearer 请求头鉴权（aihuashen 网关同样遵循该约定）。
+        # 统一以 Authorization: Bearer 请求头鉴权。
         normalized_key = api_key.strip()
         if normalized_key.lower().startswith('bearer '):
             normalized_key = normalized_key[7:].strip()
@@ -60,6 +59,8 @@ class LLMClient:
             # 禁用 gzip 压缩，避免流式/响应体需要额外解压逻辑（桌面端本地网络无性能压力）
             'Accept-Encoding': 'identity',
         }
+        if self.provider == 'gemini':
+            self.headers['x-goog-api-client'] = 'forestar-editor/1.0'
 
     @staticmethod
     def validate_model(provider, model_id):
@@ -77,26 +78,18 @@ class LLMClient:
     ):
         """根据不同提供商补充兼容的采样与思考参数。"""
         configured = dict(params)
+        provider_config = Config.LLM_PROVIDERS[self.provider]
+        model_config = next(
+            (
+                item for item in provider_config['models']
+                if item['id'] == configured.get('model')
+            ),
+            {},
+        )
+        thinking_mode = model_config.get('thinking_mode', 'disabled')
+        protocol = provider_config.get('thinking_protocol', 'none')
 
-        if self.provider == 'aihuashen':
-            # 爱化身是标准 OpenAI Chat Completions 兼容端点，当前模型不接收
-            # reasoning_effort、thinking 或 enable_thinking 等厂商扩展字段。
-            configured.pop('reasoning_effort', None)
-            configured.pop('extra_body', None)
-            configured['temperature'] = 1
-            configured['top_p'] = 1
-            return configured
-
-        if self.provider == 'siliconflow':
-            model_config = next(
-                (
-                    item for item in Config.LLM_PROVIDERS['siliconflow']['models']
-                    if item['id'] == configured.get('model')
-                ),
-                {},
-            )
-            thinking_mode = model_config.get('thinking_mode', 'disabled')
-
+        if protocol == 'enable_thinking':
             # 硅基流动使用 enable_thinking / thinking_budget，
             # 通过 extra_body 透传未声明的请求字段（发送时合并进顶层）。
             if thinking_mode == 'switchable':
@@ -114,16 +107,7 @@ class LLMClient:
                 configured['top_p'] = 0.9
             return configured
 
-        if self.provider == 'gemini':
-            model_config = next(
-                (
-                    item for item in Config.LLM_PROVIDERS['gemini']['models']
-                    if item['id'] == configured.get('model')
-                ),
-                {},
-            )
-            thinking_mode = model_config.get('thinking_mode', 'always')
-
+        if protocol == 'gemini_effort':
             # Gemini OpenAI 兼容端点通过 reasoning_effort 控制思考强度：
             # low / medium / high 对应思考 token 预算 1024 / 8192 / 24576，none 表示关闭思考。
             # 项目内思考强度仅支持 high / max，Gemini 最高档为 high，因此将 max 映射为 high。
@@ -139,10 +123,21 @@ class LLMClient:
                 configured['reasoning_effort'] = 'low'
             return configured
 
-        if thinking_enabled:
-            configured['reasoning_effort'] = reasoning_effort
-            configured['extra_body'] = {'thinking': {'type': 'enabled'}}
-        else:
+        if protocol in {'thinking_object', 'thinking_object_with_effort'}:
+            enabled = bool(thinking_enabled or thinking_mode == 'always')
+            configured['extra_body'] = {
+                'thinking': {'type': 'enabled' if enabled else 'disabled'},
+            }
+            if enabled and protocol == 'thinking_object_with_effort':
+                configured['reasoning_effort'] = reasoning_effort
+            if not enabled:
+                configured['temperature'] = 0.7
+                configured['top_p'] = 0.9
+            return configured
+
+        # 不支持显式思考开关的 OpenAI 兼容模型只发送通用采样参数，
+        # 避免把厂商私有字段误发给 OpenAI、千问或 Grok。
+        if not thinking_enabled:
             configured['temperature'] = 0.7
             configured['top_p'] = 0.9
         return configured

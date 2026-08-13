@@ -16,6 +16,7 @@ from services.generation_service import (
 )
 from services.generation.records import delete_all_records
 from services.errors import GenerationError, friendly_error_message
+from services.operation_guard import acquire_model_operation, release_model_operation
 from config import Config
 from routes.support.document_text import extract_uploaded_text
 from routes.support.generation_request import GenerationRequest
@@ -83,15 +84,19 @@ def transform_text():
         if not api_key:
             return jsonify({'success': False, 'error': '请输入API密钥'}), 400
 
-        result = transform_article_text(
-            text=data.get('text', ''),
-            operation=data.get('operation', 'rewrite'),
-            instruction=data.get('instruction', ''),
-            surrounding_context=data.get('surrounding_context', ''),
-            api_key=api_key,
-            provider=data.get('provider', 'deepseek'),
-            model=data.get('model', 'deepseek-v4-pro'),
-        )
+        acquire_model_operation()
+        try:
+            result = transform_article_text(
+                text=data.get('text', ''),
+                operation=data.get('operation', 'rewrite'),
+                instruction=data.get('instruction', ''),
+                surrounding_context=data.get('surrounding_context', ''),
+                api_key=api_key,
+                provider=data.get('provider', 'deepseek'),
+                model=data.get('model', 'deepseek-v4-pro'),
+            )
+        finally:
+            release_model_operation()
         return jsonify({
             'success': True,
             'data': {
@@ -116,7 +121,11 @@ def generate():
             return jsonify({'success': False, 'error': '请求数据为空'}), 400
 
         generation_request = GenerationRequest.from_mapping(data)
-        result = generate_article(**generation_request.generation_kwargs(stream=False))
+        acquire_model_operation()
+        try:
+            result = generate_article(**generation_request.generation_kwargs(stream=False))
+        finally:
+            release_model_operation()
 
         return jsonify(result), 200
 
@@ -132,6 +141,7 @@ def generate_stream():
     流式生成文章（Server-Sent Events）
     前端通过 ReadableStream 接收逐字输出
     """
+    operation_acquired = False
     try:
         data = request.get_json()
         if not data:
@@ -141,6 +151,8 @@ def generate_stream():
         if not generation_request.api_key.strip():
             return jsonify({'success': False, 'error': '请输入API密钥'}), 400
 
+        acquire_model_operation()
+        operation_acquired = True
         # 获取流式生成器
         stream_gen = generate_article(**generation_request.generation_kwargs(stream=True))
 
@@ -174,6 +186,7 @@ def generate_stream():
                 close_stream = getattr(stream_gen, 'close', None)
                 if callable(close_stream):
                     close_stream()
+                release_model_operation()
 
         return Response(
             stream_with_context(sse_events()),
@@ -186,8 +199,12 @@ def generate_stream():
         )
 
     except GenerationError as e:
+        if operation_acquired:
+            release_model_operation()
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
+        if operation_acquired:
+            release_model_operation()
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': friendly_error_message(e)}), 500

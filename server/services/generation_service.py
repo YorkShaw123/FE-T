@@ -395,6 +395,7 @@ def _generate_stream_flow(
     # 流式生成第一版
     full_content = ''
     full_reasoning = ''
+    deai_content = ''
 
     try:
         stream_gen = client.generate_stream_aggregated(params)
@@ -409,7 +410,6 @@ def _generate_stream_flow(
                 break
 
         # 去AI味处理（如果需要）
-        deai_content = ''
         if deai_enabled and full_content:
             yield {'type': 'status', 'data': 'deai_start'}
             deai_prompt_text = deai_prompt or Config.DEFAULT_DEAI_PROMPT
@@ -476,6 +476,31 @@ def _generate_stream_flow(
             'deai_content': deai_content,
         }
 
+    except GeneratorExit:
+        # 客户端停止读取时保留已经收到的正文，避免已付费内容完全丢失。
+        if full_content:
+            try:
+                record = GenerationRecord(
+                    title=(title or '未命名') + '（未完成）',
+                    content=full_content,
+                    deai_content=deai_content,
+                    model_used=model,
+                    thinking_enabled=thinking_enabled,
+                    reasoning_content=full_reasoning,
+                    assembled_prompt=assembled_prompt,
+                    templates_used=json.dumps(templates_used_ids),
+                    variable_values=json.dumps(variable_values or {}, ensure_ascii=False),
+                    deai_prompt=deai_prompt if deai_enabled else '',
+                    notes='生成被用户停止，已自动保存当前内容',
+                    style_mode=style_mode,
+                    style_profile_snapshot=style_profile_snapshot,
+                    created_at=utcnow(),
+                )
+                db.session.add(record)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        raise
     except Exception as e:
         db.session.rollback()
         # 流内错误：发送错误事件（转换为用户能看懂的中文）

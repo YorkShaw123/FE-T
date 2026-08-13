@@ -8,7 +8,6 @@ export const state = {
     theme: localStorage.getItem('forestar_theme') || 'dark',
     templates: [],
     groupedTemplates: {},
-    sampleTemplates: [],
     currentTab: 'workspace',
     templateFilterCategory: 'all',
     editingTemplateId: null,
@@ -43,12 +42,12 @@ export const categoryConfig = {
     constraint: { icon: '⚙️', name: '写作约束与要求' },
 };
 
-/** 收集当前启用的非示例模板 ID（供生成与预览使用） */
+/** 收集当前启用的模板 ID（供生成与预览使用） */
 export function getActiveTemplateIds() {
     const ids = [];
     for (const templates of Object.values(state.groupedTemplates)) {
         for (const tpl of templates) {
-            if (tpl.is_active && !tpl.is_sample) ids.push(tpl.id);
+            if (tpl.is_active) ids.push(tpl.id);
         }
     }
     return ids;

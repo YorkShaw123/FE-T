@@ -15,7 +15,7 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 struct SidecarHandle(Mutex<Option<CommandChild>>);
 
 /// 探测一个当前空闲的本地端口，作为 Flask 后端监听端口。
-/// 桌面版不再固定占用 5000，从而避免与 Web 版（默认 5000）或其他程序冲突。
+/// 桌面版使用随机空闲端口，避免与本机测试服务或其他程序冲突。
 fn pick_free_port() -> u16 {
     let listener = TcpListener::bind((SERVER_HOST, 0)).expect("无法绑定本地空闲端口");
     listener.local_addr().expect("读取本地端口失败").port()
@@ -39,7 +39,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             // 1) 探测空闲端口，并通过环境变量 FORESTAR_PORT 传给后端
-            //    （app.py 读取该变量：桌面版随机端口，Web 版仍默认 5000）
+            //    （app.py 读取该变量；所有模式都只绑定回环地址）
             let server_port = pick_free_port();
             let sidecar_command = app
                 .shell()

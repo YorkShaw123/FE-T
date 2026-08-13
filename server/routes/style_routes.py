@@ -2,6 +2,7 @@
 from flask import Blueprint, jsonify, request
 
 from services.errors import GenerationError, friendly_error_message
+from services.operation_guard import acquire_model_operation, release_model_operation
 from services.style_profile_service import (
     analyze_style_profile,
     get_style_profile,
@@ -42,12 +43,16 @@ def get_profile(template_id):
 def _analyze(template_id):
     data = request.get_json() or {}
     try:
-        profile = analyze_style_profile(
-            template_id=template_id,
-            api_key=str(data.get('api_key', '') or ''),
-            provider=str(data.get('provider', 'deepseek') or 'deepseek'),
-            model=str(data.get('model', 'deepseek-v4-pro') or 'deepseek-v4-pro'),
-        )
+        acquire_model_operation()
+        try:
+            profile = analyze_style_profile(
+                template_id=template_id,
+                api_key=str(data.get('api_key', '') or ''),
+                provider=str(data.get('provider', 'deepseek') or 'deepseek'),
+                model=str(data.get('model', 'deepseek-v4-pro') or 'deepseek-v4-pro'),
+            )
+        finally:
+            release_model_operation()
         template, _ = get_style_profile(template_id)
         return jsonify({'success': True, 'data': _response(profile, template)})
     except GenerationError as exc:
@@ -104,12 +109,16 @@ def list_excerpts(template_id):
 def rebuild_excerpts(template_id):
     data = request.get_json() or {}
     try:
-        excerpts = rebuild_style_excerpts(
-            template_id=template_id,
-            api_key=str(data.get('api_key', '') or ''),
-            provider=str(data.get('provider', 'deepseek') or 'deepseek'),
-            model=str(data.get('model', 'deepseek-v4-pro') or 'deepseek-v4-pro'),
-        )
+        acquire_model_operation()
+        try:
+            excerpts = rebuild_style_excerpts(
+                template_id=template_id,
+                api_key=str(data.get('api_key', '') or ''),
+                provider=str(data.get('provider', 'deepseek') or 'deepseek'),
+                model=str(data.get('model', 'deepseek-v4-pro') or 'deepseek-v4-pro'),
+            )
+        finally:
+            release_model_operation()
         return jsonify({'success': True, 'data': [item.to_dict() for item in excerpts]})
     except GenerationError as exc:
         return jsonify({'success': False, 'error': str(exc)}), 400

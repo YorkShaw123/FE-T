@@ -251,6 +251,10 @@ def import_corpus_text(corpus_id, text, filename=''):
     chunks = split_corpus_text(text)
     if not chunks:
         raise GenerationError('未能从文本中切分出有效片段')
+    if len(chunks) > Config.STYLE_CORPUS_MAX_CHUNKS:
+        raise GenerationError(
+            f'单个语料库最多 {Config.STYLE_CORPUS_MAX_CHUNKS} 个片段，请拆分后导入'
+        )
 
     # 清空旧内容：必须先清理 FTS5（其 rowid 依赖 style_chunks.id），再删 style_chunks。
     # 若先执行 ORM delete，随后的 execute() 会触发 autoflush 提前删掉 style_chunks，
@@ -380,7 +384,7 @@ def _load_matrix(chunks):
         blob = chunk.embedding_blob
         if not blob:
             continue
-        arr = np.frombuffer(blob, dtype=np.float32).astype(np.float64)
+        arr = np.frombuffer(blob, dtype=np.float32)
         if dim is None:
             dim = arr.shape[0]
         rows.append(arr)
@@ -482,7 +486,11 @@ def hybrid_search_style(
         query = query.filter(StyleChunk.pacing == pacing)
     if pov:
         query = query.filter(StyleChunk.pov == pov)
-    chunks = query.order_by(StyleChunk.id).all()
+    chunks = query.order_by(StyleChunk.id).limit(Config.STYLE_SEARCH_MAX_CANDIDATES + 1).all()
+    if len(chunks) > Config.STYLE_SEARCH_MAX_CANDIDATES:
+        raise GenerationError(
+            f'检索候选超过 {Config.STYLE_SEARCH_MAX_CANDIDATES} 个，请选择更少的语料库或增加过滤条件'
+        )
     relaxed_scene = False
     if not chunks and scene_type:
         # 场景硬过滤无候选时放宽场景条件重试，避免风格检索落空
@@ -494,7 +502,11 @@ def hybrid_search_style(
             query = query.filter(StyleChunk.pacing == pacing)
         if pov:
             query = query.filter(StyleChunk.pov == pov)
-        chunks = query.order_by(StyleChunk.id).all()
+        chunks = query.order_by(StyleChunk.id).limit(Config.STYLE_SEARCH_MAX_CANDIDATES + 1).all()
+        if len(chunks) > Config.STYLE_SEARCH_MAX_CANDIDATES:
+            raise GenerationError(
+                f'检索候选超过 {Config.STYLE_SEARCH_MAX_CANDIDATES} 个，请选择更少的语料库或增加过滤条件'
+            )
     if not chunks:
         return [], {'mode': 'empty', 'reason': '无满足过滤条件的片段'}
 
@@ -511,7 +523,7 @@ def hybrid_search_style(
                 client = LLMClient(provider=provider, api_key=api_key)
                 q_vec = client.embed([query_text])[0]
                 np = _np()  # 延迟加载 numpy（向量余弦计算需要）
-                q_vec = np.asarray(q_vec, dtype=np.float64)
+                q_vec = np.asarray(q_vec, dtype=np.float32)
                 q_norm = np.linalg.norm(q_vec)
                 if q_norm > 0:
                     q_vec = q_vec / q_norm

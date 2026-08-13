@@ -4,7 +4,7 @@
 """
 import os
 
-# 项目根目录（server/ 的上级），默认数据库与 Web 版旧数据均位于根目录 data/
+# 项目根目录（server/ 的上级）；兼容旧版项目内 data/ 数据库位置。
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 
@@ -51,26 +51,32 @@ class Config:
     EMBEDDING_MODEL = 'BAAI/bge-m3'
     EMBEDDING_DIMENSIONS = 1024
     EMBEDDING_BATCH_SIZE = 16
+    # 桌面端资源保护：限制单库规模和检索候选，避免一次性矩阵占用过多内存。
+    STYLE_CORPUS_MAX_CHUNKS = 5000
+    STYLE_SEARCH_MAX_CANDIDATES = 5000
 
     # 支持的大语言模型配置
     LLM_PROVIDERS = {
         'deepseek': {
-            'name': 'DeepSeek',
+            'name': 'DeepSeek（深度求索）',
             'base_url': 'https://api.deepseek.com',
+            'thinking_protocol': 'thinking_object_with_effort',
             'models': [
                 {
                     'id': 'deepseek-v4-flash',
                     'name': 'DeepSeek V4 Flash',
                     'description': '快速响应的轻量级模型',
                     'supports_thinking': True,
-                    'context_window': 65536,
+                    'thinking_mode': 'switchable',
+                    'context_window': 1048576,
                 },
                 {
                     'id': 'deepseek-v4-pro',
                     'name': 'DeepSeek V4 Pro',
                     'description': '高质量深度推理模型',
                     'supports_thinking': True,
-                    'context_window': 65536,
+                    'thinking_mode': 'switchable',
+                    'context_window': 1048576,
                 },
             ],
         },
@@ -78,6 +84,13 @@ class Config:
             'name': 'OpenAI',
             'base_url': 'https://api.openai.com/v1',
             'models': [
+                {
+                    'id': 'gpt-4.1',
+                    'name': 'GPT-4.1',
+                    'description': '擅长指令遵循与长文本处理',
+                    'supports_thinking': False,
+                    'context_window': 1047576,
+                },
                 {
                     'id': 'gpt-4o',
                     'name': 'GPT-4o',
@@ -95,8 +108,9 @@ class Config:
             ],
         },
         'siliconflow': {
-            'name': 'Kimi（硅基流动）',
+            'name': '硅基流动（Kimi / Embedding）',
             'base_url': 'https://api.siliconflow.com/v1',
+            'thinking_protocol': 'enable_thinking',
             'models': [
                 {
                     'id': 'moonshotai/Kimi-K2.6',
@@ -140,24 +154,76 @@ class Config:
                 },
             ],
         },
-        'aihuashen': {
-            'name': '爱化身',
-            'base_url': 'http://123.57.233.11:7880/v1',
-            'api_format': 'openai_chat_completions',
-            'auth_scheme': 'bearer',
+        'moonshot': {
+            'name': 'Kimi（月之暗面官方）',
+            'base_url': 'https://api.moonshot.cn/v1',
+            'thinking_protocol': 'thinking_object',
             'models': [
                 {
-                    'id': 'deepseek-v4-flash',
-                    'name': 'DeepSeek V4 Flash（爱化身）',
-                    'description': '通过爱化身 OpenAI 兼容接口调用',
+                    'id': 'kimi-k2.6',
+                    'name': 'Kimi K2.6',
+                    'description': '月之暗面官方长文本旗舰模型',
+                    'supports_thinking': True,
+                    'thinking_mode': 'switchable',
+                    'context_window': 262144,
+                },
+                {
+                    'id': 'kimi-k2.5',
+                    'name': 'Kimi K2.5',
+                    'description': '兼顾创作质量与复杂推理',
+                    'supports_thinking': True,
+                    'thinking_mode': 'switchable',
+                    'context_window': 262144,
+                },
+            ],
+        },
+        'qwen': {
+            'name': '通义千问（阿里云百炼）',
+            'base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+            'models': [
+                {
+                    'id': 'qwen-plus',
+                    'name': 'Qwen Plus',
+                    'description': '通用能力、效果与成本均衡',
                     'supports_thinking': False,
-                    'context_window': 65536,
+                    'context_window': 131072,
+                },
+                {
+                    'id': 'qwen-turbo',
+                    'name': 'Qwen Turbo',
+                    'description': '速度优先的轻量文本模型',
+                    'supports_thinking': False,
+                    'context_window': 131072,
+                },
+            ],
+        },
+        'zhipu': {
+            'name': '智谱 GLM',
+            'base_url': 'https://open.bigmodel.cn/api/paas/v4',
+            'thinking_protocol': 'thinking_object',
+            'models': [
+                {
+                    'id': 'glm-4.7',
+                    'name': 'GLM-4.7',
+                    'description': '智谱高智能长文本模型',
+                    'supports_thinking': True,
+                    'thinking_mode': 'switchable',
+                    'context_window': 204800,
+                },
+                {
+                    'id': 'glm-4.7-flashx',
+                    'name': 'GLM-4.7 FlashX',
+                    'description': '低延迟版本',
+                    'supports_thinking': True,
+                    'thinking_mode': 'switchable',
+                    'context_window': 204800,
                 },
             ],
         },
         'gemini': {
-            'name': 'Gemini（claudecode 中转）',
-            'base_url': 'https://api.claudecode.net.cn/api/gemini',
+            'name': 'Google Gemini（官方）',
+            'base_url': 'https://generativelanguage.googleapis.com/v1beta/openai',
+            'thinking_protocol': 'gemini_effort',
             'models': [
                 {
                     'id': 'gemini-2.5-pro',
@@ -174,6 +240,19 @@ class Config:
                     'supports_thinking': True,
                     'thinking_mode': 'switchable',
                     'context_window': 1048576,
+                },
+            ],
+        },
+        'xai': {
+            'name': 'xAI Grok',
+            'base_url': 'https://api.x.ai/v1',
+            'models': [
+                {
+                    'id': 'grok-4.3',
+                    'name': 'Grok 4.3',
+                    'description': 'xAI 官方通用旗舰模型',
+                    'supports_thinking': False,
+                    'context_window': 262144,
                 },
             ],
         },

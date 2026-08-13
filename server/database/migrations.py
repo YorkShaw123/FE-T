@@ -14,14 +14,11 @@ def apply_sqlite_migrations(db):
             "ALTER TABLE prompt_templates "
             "ADD COLUMN is_sample BOOLEAN NOT NULL DEFAULT 0"
         ))
-        # 一次性数据迁移：仅将旧版种子模板（内容含变量占位符且属于预设名称）标记为示例模板。
-        # 注意：不能按“内容含 {{” 全部标记——用户自建的普通模板同样可能使用变量占位符。
-        db.session.execute(db.text(
-            "UPDATE prompt_templates SET is_sample = 1 "
-            "WHERE content LIKE '%{{%' AND name IN ("
-            "'主角性格与身份', '配角设定模板', '世界观基础设定', '故事发生场景', "
-            "'章节大纲模板', '主线剧情概要', '写作质量要求', '叙事节奏控制')"
-        ))
+    # 示例模板功能已移除：保留兼容字段以避免破坏性重建 SQLite 表，
+    # 并将历史示例无损转换为可编辑的普通模板。
+    db.session.execute(db.text(
+        "UPDATE prompt_templates SET is_sample = 0 WHERE is_sample != 0"
+    ))
 
     record_columns = _column_names(db, 'generation_records')
     if 'edited_content' not in record_columns:
@@ -128,6 +125,19 @@ def apply_sqlite_migrations(db):
         "CREATE VIRTUAL TABLE IF NOT EXISTS style_chunks_fts "
         "USING fts5(content, tokenize='trigram', content_rowid='id')"
     ))
+    # 只在主表与 FTS 的行数/rowid 校验不一致时重建，兼顾异常修复与启动速度。
+    chunk_stats = db.session.execute(db.text(
+        "SELECT COUNT(*), COALESCE(SUM(id), 0) FROM style_chunks"
+    )).one()
+    fts_stats = db.session.execute(db.text(
+        "SELECT COUNT(*), COALESCE(SUM(rowid), 0) FROM style_chunks_fts"
+    )).one()
+    if tuple(chunk_stats) != tuple(fts_stats):
+        db.session.execute(db.text("DELETE FROM style_chunks_fts"))
+        db.session.execute(db.text(
+            "INSERT INTO style_chunks_fts(rowid, content) "
+            "SELECT id, content FROM style_chunks"
+        ))
     db.session.commit()
 
 

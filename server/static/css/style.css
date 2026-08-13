@@ -526,17 +526,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .var-inline-editor { display: inline-block; width: auto; min-width: 120px; max-width: 100%; margin: 2px 4px; padding: 4px 7px; border: 0; border-bottom: 1px solid var(--jade); border-radius: 4px 4px 0 0; color: var(--jade); background: var(--jade-soft); font-family: var(--font-ui); }
 .variables-empty { padding: 40px 20px; color: var(--muted); text-align: center; }
 
-/* 示例模板编辑器 */
-.sample-template-tabs { display: flex; gap: 6px; margin: 0 0 10px; }
-#edit-template-content:read-only,
-#edit-template-content:disabled { background: var(--surface-2); color: var(--muted); }
-.markdown-toolbar.sample-mode button:not(#btn-toggle-markdown-preview) { display: none; }
-.sample-variables-panel { margin-top: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-.sample-variables-list { display: grid; gap: 12px; }
-.sample-variable-item { display: grid; gap: 6px; }
-.sample-variable-item span { font-size: 12px; font-weight: 650; color: var(--jade); }
-.sample-badge { margin-left: 6px; padding: 1px 6px; border-radius: 10px; background: var(--jade-soft); color: var(--jade); font-size: 10px; }
-.template-list-item.is-sample { border-left: 3px solid var(--jade); }
 .version-history-item .version-item-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .version-history-item .version-item-info { flex: 1 1 auto; min-width: 0; }
 .version-history-item .restore-version-btn { flex: 0 0 auto; align-self: center; }

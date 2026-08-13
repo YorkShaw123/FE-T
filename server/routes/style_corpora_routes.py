@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 
 from routes.support.document_text import extract_uploaded_text
 from services.errors import GenerationError, friendly_error_message
+from services.operation_guard import acquire_model_operation, release_model_operation
 from services.style_rag_service import (
     clear_corpus_chunks,
     create_corpus,
@@ -108,11 +109,15 @@ def index_corpus_route(corpus_id):
     """对语料库切片调用 Embedding API 生成向量（需要硅基流动 API Key）。"""
     data = request.get_json() or {}
     try:
-        count = index_corpus(
-            corpus_id,
-            api_key=data.get('api_key', ''),
-            provider=data.get('provider', 'siliconflow'),
-        )
+        acquire_model_operation()
+        try:
+            count = index_corpus(
+                corpus_id,
+                api_key=data.get('api_key', ''),
+                provider=data.get('provider', 'siliconflow'),
+            )
+        finally:
+            release_model_operation()
         corpus = get_corpus(corpus_id)
         return jsonify({'success': True, 'data': {'indexed_count': count, 'corpus': corpus.to_dict()}})
     except GenerationError as exc:

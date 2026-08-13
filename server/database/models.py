@@ -30,7 +30,7 @@ class PromptTemplate(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     # 风格参考强度，仅对 example 分类生效：light / medium / strict
     style_strength = db.Column(db.String(20), nullable=False, default='light')
-    # 是否为示例模板（模板变量填写专用，不参与生成）
+    # 兼容旧数据库保留；示例模板产品功能已移除，迁移会统一重置为 False。
     is_sample = db.Column(db.Boolean, nullable=False, default=False)
     # 排序权重
     sort_order = db.Column(db.Integer, default=0)
@@ -60,7 +60,6 @@ class PromptTemplate(db.Model):
             'variables': self.variables,
             'is_active': self.is_active,
             'style_strength': self.style_strength or 'light',
-            'is_sample': self.is_sample,
             'sort_order': self.sort_order,
             'version': self.version,
             'parent_id': self.parent_id,

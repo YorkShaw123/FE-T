@@ -1,9 +1,9 @@
 /**
  * Forestar Editor - 模板管理
- * 负责模板列表、分类筛选、新建/编辑/删除/导入导出、示例模板另存为、版本历史。
+ * 负责模板列表、分类筛选、新建/编辑/删除/导入导出与版本历史。
  */
 import { $, $$, api, toast, escapeHtml, safeBind } from './utils.js';
-import { state, categoryConfig } from './state.js';
+import { state } from './state.js';
 import { loadWorkspaceTemplates } from './templatePanel.js';
 import { loadStyleProfile } from './styleCard.js';
 
@@ -48,15 +48,14 @@ function renderTemplateList(templates) {
     const results = $('#template-list-results', container);
     results.innerHTML = filtered.length ? filtered.map(tpl => {
         const active = tpl.is_active !== false;
-        const isSample = tpl.is_sample;
         const preview = tpl.content ? tpl.content.replace(/\{\{.*?\}\}/g, '___').substring(0, 60) : '';
         const vars = tpl.variables ? (typeof tpl.variables === 'string' ? JSON.parse(tpl.variables) : tpl.variables).join(', ') : '';
         const updatedAt = tpl.updated_at ? new Date(tpl.updated_at).toLocaleString('zh-CN') : '';
-        return `<div class="template-list-item ${active ? 'active' : ''} ${isSample ? 'is-sample' : ''}" data-id="${tpl.id}">
+        return `<div class="template-list-item ${active ? 'active' : ''}" data-id="${tpl.id}">
             <span class="item-status"></span>
             <div class="item-info">
-                <div class="item-name">${escapeHtml(tpl.name)} <span style="font-size:11px;color:var(--text-muted)">v${tpl.version}</span>${isSample ? ' <span class="sample-badge">示例</span>' : ''}</div>
-                <div class="item-meta">${isSample ? '✏️ 示例模板' : vars ? '📌 ' + escapeHtml(vars) : '无变量'} · ${updatedAt}</div>
+                <div class="item-name">${escapeHtml(tpl.name)} <span style="font-size:11px;color:var(--text-muted)">v${tpl.version}</span></div>
+                <div class="item-meta">${vars ? '📌 ' + escapeHtml(vars) : '无变量'} · ${updatedAt}</div>
             </div>
             <div class="item-preview">${escapeHtml(preview)}</div>
         </div>`;
@@ -231,103 +230,7 @@ safeBind('#btn-toggle-markdown-preview', 'click', event => {
     event.currentTarget.textContent = visible ? '隐藏预览' : '显示预览';
 });
 
-// ==================== 示例模板 ====================
-
-/** 加载示例模板列表（带缓存） */
-async function loadSampleTemplates() {
-    if (state.sampleTemplates.length > 0) return;
-    try {
-        const data = await api('/api/templates/samples');
-        state.sampleTemplates = data.data;
-    } catch (e) {
-        console.error('加载示例模板失败:', e);
-        state.sampleTemplates = [];
-    }
-}
-
-/** 重置编辑器为普通模板编辑状态 */
-function resetEditorUi() {
-    const content = $('#edit-template-content');
-    content.readOnly = false;
-    content.disabled = false;
-
-    $('#sample-template-tabs').style.display = 'none';
-    $('#sample-template-tabs').innerHTML = '';
-    $('#sample-variables-panel').style.display = 'none';
-    $('#sample-variables-list').innerHTML = '';
-
-    $('#btn-save-as-template').style.display = 'none';
-    $('#btn-delete-sample').style.display = 'none';
-    $('#btn-save-template').style.display = '';
-    $('#btn-delete-template').style.display = '';
-    $('#btn-version-history').style.display = '';
-    $('#btn-open-style-card').style.display = '';
-    $('#edit-template-is-sample-label').style.display = '';
-    $('#edit-template-is-sample').checked = false;
-
-    $('.markdown-toolbar').classList.remove('sample-mode');
-}
-
-/** 进入示例模板编辑模式（只读 + 变量填写 + 另存为） */
-function enterSampleMode(tpl) {
-    resetEditorUi();
-
-    state.editingTemplateId = tpl.id;
-    $('#editor-title').textContent = `示例模板 - ${tpl.name} (v${tpl.version})`;
-    $('#edit-template-id').value = tpl.id;
-    $('#edit-template-name').value = '';
-    $('#edit-template-name').placeholder = '填写新模板名称';
-    $('#edit-template-category').value = tpl.category;
-    $('#edit-template-desc').value = tpl.description || '';
-
-    const content = $('#edit-template-content');
-    content.value = tpl.content;
-    content.readOnly = true;
-    renderMarkdownPreview();
-
-    // 示例模式下隐藏保存/删除/版本/示例开关/风格卡，显示另存为与删除示例
-    $('#btn-save-template').style.display = 'none';
-    $('#btn-delete-template').style.display = 'none';
-    $('#btn-version-history').style.display = 'none';
-    $('#btn-open-style-card').style.display = 'none';
-    $('#edit-template-is-sample-label').style.display = 'none';
-    $('#btn-save-as-template').style.display = '';
-    $('#btn-delete-sample').style.display = '';
-
-    // 隐藏 Markdown 工具栏的格式按钮，仅保留预览切换
-    $('.markdown-toolbar').classList.add('sample-mode');
-
-    // 渲染示例模板 tab 栏
-    const tabs = $('#sample-template-tabs');
-    tabs.style.display = '';
-    tabs.innerHTML = state.sampleTemplates.map(sample => {
-        const active = sample.id === tpl.id;
-        const cfg = categoryConfig[sample.category] || { icon: '📄' };
-        return `<button type="button" class="variables-template-tab ${active ? 'active' : ''}" data-id="${sample.id}">
-            ${cfg.icon} ${escapeHtml(sample.name)}
-        </button>`;
-    }).join('');
-    $$('.variables-template-tab', tabs).forEach(tab => {
-        tab.addEventListener('click', () => {
-            const id = parseInt(tab.dataset.id);
-            const sample = state.sampleTemplates.find(s => s.id === id);
-            if (sample) enterSampleMode(sample);
-        });
-    });
-
-    // 渲染变量大文本框
-    const list = $('#sample-variables-list');
-    const vars = tpl.variables ? (typeof tpl.variables === 'string' ? JSON.parse(tpl.variables) : tpl.variables) : [];
-    list.innerHTML = vars.length ? vars.map(v => `
-        <label class="sample-variable-item">
-            <span>${escapeHtml(v)}</span>
-            <textarea class="input-textarea" data-var="${escapeHtml(v)}" rows="4" placeholder="填写 ${escapeHtml(v)}"></textarea>
-        </label>
-    `).join('') : '<div class="variables-empty">该示例模板没有变量</div>';
-    $('#sample-variables-panel').style.display = '';
-}
-
-/** 打开模板编辑器：null 新建、示例模板进入示例模式、普通模板编辑 */
+/** 打开模板编辑器：null 新建，否则编辑已有模板。 */
 export async function openTemplateEditor(templateId) {
     const panel = $('#template-editor-panel');
     panel.style.display = '';
@@ -336,8 +239,7 @@ export async function openTemplateEditor(templateId) {
     $('#style-card-panel').style.display = 'none';
 
     if (templateId === null) {
-        // 新建普通模板
-        resetEditorUi();
+        // 新建模板
         $('#editor-title').textContent = '新建模板';
         $('#edit-template-id').value = '';
         $('#edit-template-name').value = '';
@@ -355,30 +257,23 @@ export async function openTemplateEditor(templateId) {
         const data = await api(`/api/templates/${templateId}`);
         const tpl = data.data;
 
-        if (tpl.is_sample) {
-            await loadSampleTemplates();
-            enterSampleMode(tpl);
-        } else {
-            resetEditorUi();
-            $('#editor-title').textContent = `编辑模板 - ${tpl.name} (v${tpl.version})`;
-            $('#edit-template-id').value = tpl.id;
-            $('#edit-template-name').value = tpl.name;
-            $('#edit-template-name').placeholder = '无标题模板';
-            $('#edit-template-category').value = tpl.category;
-            $('#edit-template-desc').value = tpl.description || '';
-            $('#edit-template-content').value = tpl.content;
-            $('#edit-template-is-sample').checked = Boolean(tpl.is_sample);
-            renderMarkdownPreview();
-            state.editingTemplateId = tpl.id;
-            updateStyleCardVisibility();
-        }
+        $('#editor-title').textContent = `编辑模板 - ${tpl.name} (v${tpl.version})`;
+        $('#edit-template-id').value = tpl.id;
+        $('#edit-template-name').value = tpl.name;
+        $('#edit-template-name').placeholder = '无标题模板';
+        $('#edit-template-category').value = tpl.category;
+        $('#edit-template-desc').value = tpl.description || '';
+        $('#edit-template-content').value = tpl.content;
+        renderMarkdownPreview();
+        state.editingTemplateId = tpl.id;
+        updateStyleCardVisibility();
     } catch (e) {
         toast('加载模板失败: ' + e.message, 'error');
         closeTemplateEditor();
     }
 }
 
-// ==================== 保存 / 另存 / 删除 / 版本历史 ====================
+// ==================== 保存 / 删除 / 版本历史 ====================
 
 safeBind('#edit-template-category', 'change', updateStyleCardVisibility);
 
@@ -389,7 +284,6 @@ safeBind('#btn-save-template', 'click', async () => {
         category: $('#edit-template-category').value,
         content: $('#edit-template-content').value,
         description: $('#edit-template-desc').value,
-        is_sample: $('#edit-template-is-sample').checked,
     };
 
     if (!data.name.trim()) { toast('请输入模板名称', 'warning'); return; }
@@ -424,57 +318,6 @@ safeBind('#btn-save-template', 'click', async () => {
         loadTemplatesList();
     } catch (e) {
         toast('保存失败: ' + e.message, 'error');
-    }
-});
-
-// 示例模板另存为新模板
-safeBind('#btn-save-as-template', 'click', async () => {
-    const sampleId = $('#edit-template-id').value;
-    const name = $('#edit-template-name').value.trim();
-    const category = $('#edit-template-category').value;
-    const description = $('#edit-template-desc').value;
-
-    if (!sampleId) { toast('请先选择一个示例模板', 'warning'); return; }
-    if (!name) { toast('请输入新模板名称', 'warning'); $('#edit-template-name').focus(); return; }
-
-    const variableValues = {};
-    $$('#sample-variables-list textarea[data-var]').forEach(textarea => {
-        variableValues[textarea.dataset.var] = textarea.value;
-    });
-
-    try {
-        await api('/api/templates/from-sample', {
-            method: 'POST',
-            body: JSON.stringify({
-                sample_id: parseInt(sampleId),
-                name,
-                category,
-                description,
-                variable_values: variableValues,
-            }),
-        });
-        toast('新模板已创建');
-        closeTemplateEditor();
-        loadTemplatesList();
-    } catch (e) {
-        toast('保存失败: ' + e.message, 'error');
-    }
-});
-
-// 删除示例模板
-safeBind('#btn-delete-sample', 'click', async () => {
-    const sampleId = $('#edit-template-id').value;
-    if (!sampleId) { toast('请先选择示例模板', 'warning'); return; }
-    if (!confirm('确定删除这个示例模板吗？删除后不可恢复。')) return;
-    try {
-        await api(`/api/templates/${sampleId}`, { method: 'DELETE' });
-        // 同步内存缓存，避免刷新前列表仍显示已删除的示例
-        state.sampleTemplates = state.sampleTemplates.filter(t => String(t.id) !== String(sampleId));
-        toast('示例模板已删除');
-        closeTemplateEditor();
-        loadTemplatesList();
-    } catch (e) {
-        toast('删除失败: ' + e.message, 'error');
     }
 });
 

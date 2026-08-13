@@ -37,9 +37,12 @@
                 <select id="provider-select">
                     <option value="deepseek">DeepSeek</option>
                     <option value="openai">OpenAI</option>
-                    <option value="siliconflow">Kimi（硅基流动）</option>
-                    <option value="aihuashen">爱化身</option>
-                    <option value="gemini">Gemini（claudecode 中转）</option>
+                    <option value="moonshot">Kimi（月之暗面）</option>
+                    <option value="qwen">通义千问</option>
+                    <option value="zhipu">智谱 GLM</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="xai">xAI Grok</option>
+                    <option value="siliconflow">硅基流动</option>
                 </select>
                 <select id="model-select">
                     <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
@@ -315,8 +318,6 @@
                         <div class="editor-header-actions">
                             <button id="btn-open-style-card" class="btn btn-outline" type="button" style="display:none;">风格卡</button>
                             <button id="btn-version-history" class="btn btn-outline">版本历史</button>
-                            <button id="btn-save-as-template" class="btn btn-primary" type="button" style="display:none;">另存为模板</button>
-                            <button id="btn-delete-sample" class="btn btn-danger" type="button" style="display:none;">删除示例</button>
                             <button id="btn-save-template" class="btn btn-primary">保存模板</button>
                         </div>
                     </div>
@@ -332,12 +333,8 @@
                                 <option value="constraint">更多约束</option>
                             </select>
                             <input type="text" id="edit-template-desc" class="input-text" placeholder="添加模板描述（可选）">
-                            <label class="switch-label" id="edit-template-is-sample-label" style="display:none;">
-                                <input type="checkbox" id="edit-template-is-sample"> 设为示例模板
-                            </label>
                             <button id="btn-delete-template" class="btn btn-danger">删除</button>
                         </div>
-                        <div id="sample-template-tabs" class="sample-template-tabs" style="display:none;"></div>
                         <div class="markdown-toolbar" aria-label="Markdown 工具栏">
                             <button type="button" data-md-prefix="# " title="一级标题">H1</button>
                             <button type="button" data-md-prefix="## " title="二级标题">H2</button>
@@ -357,9 +354,6 @@
                             <div class="markdown-preview-pane" id="markdown-preview">
                                 <div class="markdown-preview-empty">Markdown 预览会显示在这里</div>
                             </div>
-                        </div>
-                        <div id="sample-variables-panel" class="sample-variables-panel" style="display:none;">
-                            <div class="sample-variables-list" id="sample-variables-list"></div>
                         </div>
                     </div>
                     <!-- 范例文章专用 Style Card 编辑面板 -->

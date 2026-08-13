@@ -32,7 +32,7 @@ function renderWorkspaceVariables(grouped) {
     const variables = [];
     const seen = new Set();
     Object.values(grouped).flat().forEach(template => {
-        if (template.is_active === false || template.is_sample) return;
+        if (template.is_active === false) return;
         let names = template.variables || [];
         if (typeof names === 'string') {
             try { names = JSON.parse(names); } catch { names = []; }
@@ -96,7 +96,7 @@ function renderWorkspaceTemplates(grouped) {
     let totalCount = 0;
 
     for (const [catId, templates] of Object.entries(grouped)) {
-        const visible = (templates || []).filter(tpl => !tpl.is_sample);
+        const visible = templates || [];
         if (visible.length === 0) continue;
         totalCount += visible.length;
         const cfg = categoryConfig[catId] || { icon: '📄', name: catId };
@@ -129,7 +129,7 @@ function renderWorkspaceTemplates(grouped) {
     if (totalCount === 0) {
         html = `<div style="padding:20px;text-align:center;color:var(--text-muted);">
             <p>暂无可用模板</p>
-            <p style="font-size:12px;margin-top:8px;">请切换到"模板管理"标签页，从示例模板生成新模板</p>
+            <p style="font-size:12px;margin-top:8px;">请切换到“模板管理”标签页创建模板</p>
         </div>`;
     }
 
