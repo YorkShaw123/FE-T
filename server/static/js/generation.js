@@ -88,7 +88,7 @@ safeBind('#btn-generate', 'click', async () => {
     $('#btn-generate').style.display = 'none';
     $('#btn-stop-generate').style.display = '';
     $('#btn-stop-generate').disabled = false;
-    $('#btn-stop-generate').textContent = '⏹ 停止生成';
+    $('#btn-stop-generate').textContent = '停止生成';
 
     try {
         await generateStream(

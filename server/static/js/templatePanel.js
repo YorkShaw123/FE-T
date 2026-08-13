@@ -84,7 +84,7 @@ export async function loadWorkspaceTemplates() {
         console.error('[Forestar] 加载模板失败:', e);
         container.innerHTML = `<div style="padding:20px;text-align:center;">
             <p style="color:var(--accent-danger);margin-bottom:10px;">⚠️ 加载模板失败: ${escapeHtml(e.message)}</p>
-            <button class="btn btn-outline btn-sm" onclick="location.reload()">🔄 重新加载</button>
+            <button class="btn btn-outline btn-sm" onclick="location.reload()">重新加载</button>
         </div>`;
     }
 }
@@ -99,13 +99,13 @@ function renderWorkspaceTemplates(grouped) {
         const visible = templates || [];
         if (visible.length === 0) continue;
         totalCount += visible.length;
-        const cfg = categoryConfig[catId] || { icon: '📄', name: catId };
+        const cfg = categoryConfig[catId] || { name: catId };
         const activeCount = visible.filter(t => t.is_active !== false).length;
 
         html += `<div class="template-category-group">`;
         html += `<div class="category-group-header" data-cat="${catId}">
             <span class="collapse-icon">▼</span>
-            <span>${cfg.icon} ${cfg.name}</span>
+            <span>${cfg.name}</span>
             <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">
                 ${activeCount}/${visible.length} 启用
             </span>

@@ -65,9 +65,9 @@
                 <!-- 左侧：模板面板 -->
                 <aside class="panel panel-left">
                     <div class="panel-header">
-                        <h2>📋 提示词模板</h2>
+                        <h2>提示词模板</h2>
                         <div class="panel-actions">
-                            <button id="btn-refresh-templates" class="btn btn-xs btn-outline" title="刷新模板列表">🔄</button>
+                            <button id="btn-refresh-templates" class="btn btn-xs btn-outline" title="刷新模板列表">刷新</button>
                         </div>
                     </div>
                     <div class="panel-body" id="template-panel-body">
@@ -91,7 +91,7 @@
                             <div class="panel-section prompt-mode-section">
                                 <div class="section-header">
                                     <div>
-                                        <h3>🧩 结构化消息编排</h3>
+                                        <h3>结构化消息编排</h3>
                                         <p class="section-description">将系统规则、任务、素材、范例和输出要求拆成独立消息</p>
                                     </div>
                                     <label class="switch-label" title="关闭时完整使用原有字符串拼装格式">
@@ -163,7 +163,7 @@
                             <!-- 去AI味 -->
                             <div class="panel-section">
                                 <div class="section-header">
-                                    <h3>🔄 去AI味处理</h3>
+                                    <h3>去AI味处理</h3>
                                     <label class="switch-label">
                                         <input type="checkbox" id="deai-enabled">
                                         <span>启用</span>
@@ -176,12 +176,11 @@
                             <!-- 前置文章 -->
                             <div class="panel-section">
                                 <div class="section-header">
-                                    <h3>📎 前置文章（可选）</h3>
+                                    <h3>前置文章（可选）</h3>
                                     <span class="hint-text" style="font-size:11px;">超过30000字自动压缩</span>
                                 </div>
                                 <div id="article-drop-zone" class="article-drop-zone" tabindex="0" role="button">
                                     <input type="file" id="article-file-input" accept=".txt,.doc,.docx,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
-                                    <span class="drop-zone-icon">📄</span>
                                     <span><strong>拖拽文本文件到这里</strong>，或 <button type="button" id="btn-browse-article" class="link-button">搜索本机文件</button></span>
                                     <small>支持 .txt、.doc、.docx，单个文件不超过 10 MB</small>
                                 </div>
@@ -194,10 +193,10 @@
                             <div class="generate-actions">
                                 <input type="text" id="article-title" class="input-text" placeholder="文章标题（可选）" style="flex:1;">
                                 <button id="btn-generate" class="btn btn-primary btn-lg">
-                                    🚀 生成文章
+                                    生成文章
                                 </button>
                                 <button id="btn-stop-generate" class="btn btn-stop btn-lg" type="button" style="display:none;">
-                                    ⏹ 停止生成
+                                    停止生成
                                 </button>
                             </div>
                         </div>
@@ -207,11 +206,11 @@
                             <!-- 生成结果区 -->
                             <div class="panel-section result-section" id="result-section" style="display:none; flex:1;">
                                 <div class="section-header">
-                                    <h3>📄 生成结果</h3>
+                                    <h3>生成结果</h3>
                                     <div class="result-actions">
-                                        <button id="btn-open-result-editor" class="btn btn-xs btn-primary">✍️ 全屏编辑</button>
-                                        <button id="btn-copy-result" class="btn btn-xs btn-outline">📋 复制</button>
-                                        <button id="btn-download-result" class="btn btn-xs btn-outline">💾 下载</button>
+                                        <button id="btn-open-result-editor" class="btn btn-xs btn-primary">全屏编辑</button>
+                                        <button id="btn-copy-result" class="btn btn-xs btn-outline">复制</button>
+                                        <button id="btn-download-result" class="btn btn-xs btn-outline">下载</button>
                                     </div>
                                 </div>
                                 <!-- API 调用状态：属于结果栏内部，避免与结果区域并排重叠 -->
@@ -224,7 +223,7 @@
                                 </div>
                                 <!-- 思维链 -->
                                 <div id="reasoning-section" style="display:none;" class="reasoning-box">
-                                    <div class="section-header"><h4>💭 思维链</h4></div>
+                                    <div class="section-header"><h4>思维链</h4></div>
                                     <pre id="reasoning-content" class="reasoning-content"></pre>
                                 </div>
                                 <!-- 第一版 -->
@@ -237,7 +236,7 @@
                                 </div>
                                 <!-- 去AI味版 -->
                                 <div id="deai-content-section" style="display:none;">
-                                    <div class="section-header"><h4>✅ 去AI味版</h4></div>
+                                    <div class="section-header"><h4>去AI味版</h4></div>
                                     <div id="deai-content" class="article-content"></div>
                                 </div>
                             </div>

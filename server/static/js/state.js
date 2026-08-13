@@ -35,11 +35,11 @@ export const DRAFT_FIELDS = [
 
 /** 模板分类展示元信息（图标与名称） */
 export const categoryConfig = {
-    background: { icon: '🌍', name: '背景设定' },
-    character: { icon: '👤', name: '人物设定' },
-    plot: { icon: '📖', name: '剧情设定/前情提要' },
-    example: { icon: '📝', name: '范例文章/参考风格' },
-    constraint: { icon: '⚙️', name: '写作约束与要求' },
+    background: { name: '背景设定' },
+    character: { name: '人物设定' },
+    plot: { name: '剧情设定' },
+    example: { name: '范例文章' },
+    constraint: { name: '更多约束' },
 };
 
 /** 收集当前启用的模板 ID（供生成与预览使用） */
