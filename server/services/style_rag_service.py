@@ -393,7 +393,11 @@ def _load_matrix(chunks):
     matrix = np.stack(rows)
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
-    return matrix / norms
+    # matrix 是 np.stack 新建的可写 float32 数组，可以安全地原地归一化。
+    # 最大候选池（5000×1024）约 19.5 MiB；避免 `matrix / norms` 再复制一整份，
+    # 能显著降低 Style RAG 检索峰值内存，同时保持算法与返回值不变。
+    matrix /= norms
+    return matrix
 
 
 def _bm25_scores(corpus_ids, query_text, limit=60):
@@ -515,6 +519,7 @@ def hybrid_search_style(
 
     # 2) 向量余弦检索（主信号）
     vector_ranked, vector_scores = [], {}
+    matrix = None
     api_key = (api_key or '').strip()
     if api_key:
         matrix = _load_matrix(chunks)

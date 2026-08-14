@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["build", "dist", "src-tauri/target"]
+
+[tool.ruff.lint]
+# 从可靠、低争议的基础规则开始；后续按实际收益渐进增加。
+select = ["E4", "E7", "E9", "F"]

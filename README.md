@@ -132,6 +132,30 @@ python -m venv .venv
 
 浏览器访问 http://127.0.0.1:5000。仅可用 `FORESTAR_PORT` 覆盖测试端口。
 
+### 开发质量检查
+
+运行 Lint 和测试前，安装仅供开发使用的依赖：
+
+```powershell
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
+```
+
+```powershell
+# Python Lint
+.\.venv\Scripts\python -m ruff check server scripts tests
+
+# Flask 冒烟测试
+.\.venv\Scripts\python -m pytest
+
+# 原生 JavaScript 语法检查
+Get-ChildItem server\static\js\*.js | ForEach-Object { node --check $_.FullName }
+
+# Rust/Tauri 静态检查
+cargo check --manifest-path src-tauri\Cargo.toml --locked
+```
+
+当前 pytest 只覆盖本地服务启动、安全响应头与跨源写请求拦截等关键边界，尚未覆盖需要真实模型 API 的生成流程。Python 代码暂未启用严格静态类型检查：现有模块类型注解较少，后续应按模块渐进补充，而不是一次性开启严格模式并大范围改写。
+
 ## 使用说明
 
 ### 1. 配置模板
@@ -166,6 +190,7 @@ python -m venv .venv
 6. 可用「检索测试」输入一句话实时预览命中的风格片段与相关度，便于调试语料效果
 
 > 技术说明：向量以 float32 BLOB 存入 SQLite，检索时加载为 NumPy 矩阵（4000 切片仅约 16MB 内存，毫秒级）；不引入 ChromaDB/Qdrant 等向量库，PyInstaller 打包体积与杀软误报不受影响。
+> 检索矩阵使用原地归一化，避免在最大候选池下额外复制一整份约 19.5MB 的向量数据。
 
 ### 7. 查看历史
 在「生成记录」页面查看和管理所有历史生成结果。

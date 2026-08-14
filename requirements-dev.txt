@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# 开发质量工具；不进入 PyInstaller 正式打包依赖。
+pytest==9.1.1
+ruff==0.15.22
