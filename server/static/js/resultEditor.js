@@ -64,14 +64,15 @@ export async function openResultEditor() {
         toast('文章尚未完整生成，暂不能进入编辑', 'warning');
         return;
     }
-    let base = getArticleText($('#deai-content')) || getArticleText($('#first-content'));
+    let base = getArticleText($('#style-rewrite-content'))
+        || getArticleText($('#deai-content')) || getArticleText($('#first-content'));
     let edited = '';
     let history = [];
     if (state.currentRecordId) {
         try {
             const data = await api(`/api/generation/records/${state.currentRecordId}`);
             const record = data.data;
-            base = record.deai_content || record.content || base;
+            base = record.final_content || record.deai_content || record.content || base;
             edited = record.edited_content || '';
             history = JSON.parse(record.edit_history || '[]');
         } catch (error) {

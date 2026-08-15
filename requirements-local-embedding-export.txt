@@ -1,0 +1,5 @@
+# Build-time only. Never include these packages in forestar-server.exe.
+torch==2.7.1
+transformers==4.53.2
+onnx==1.18.0
+safetensors==0.5.3

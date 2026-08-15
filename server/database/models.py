@@ -203,7 +203,10 @@ class StyleCorpus(db.Model):
     # 索引状态：empty(未导入) / imported(已导入未向量化) / indexed(已向量化可检索)
     index_status = db.Column(db.String(30), nullable=False, default='empty')
     embedding_model = db.Column(db.String(100), default='')
+    embedding_backend = db.Column(db.String(50), default='')
+    embedding_model_version = db.Column(db.String(100), default='')
     embedding_dim = db.Column(db.Integer, nullable=False, default=0)
+    signature_version = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=utcnow)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
@@ -222,7 +225,58 @@ class StyleCorpus(db.Model):
             'chunk_count': self.chunk_count,
             'index_status': self.index_status,
             'embedding_model': self.embedding_model or '',
+            'embedding_backend': self.embedding_backend or '',
+            'embedding_model_version': self.embedding_model_version or '',
             'embedding_dim': self.embedding_dim,
+            'signature_version': self.signature_version,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class AuthorStyleProfile(db.Model):
+    """从 corpus Style Window 聚合的本地统计画像，不是 LLM Style Card。"""
+    __tablename__ = 'author_style_profiles'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    corpus_id = db.Column(
+        db.Integer,
+        db.ForeignKey('style_corpora.id', ondelete='CASCADE'),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    feature_version = db.Column(db.Integer, nullable=False, index=True)
+    profile_json = db.Column(db.Text, nullable=False, default='{}')
+    sample_count = db.Column(db.Integer, nullable=False, default=0)
+    valid_char_count = db.Column(db.Integer, nullable=False, default=0)
+    confidence = db.Column(db.Float, nullable=False, default=0.0)
+    created_at = db.Column(db.DateTime, default=utcnow)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
+
+    corpus = db.relationship('StyleCorpus', backref=db.backref(
+        'author_style_profile', uselist=False, cascade='all, delete-orphan', passive_deletes=True,
+    ))
+
+    def to_dict(self, current_feature_version=None):
+        import json
+        try:
+            profile = json.loads(self.profile_json or '{}')
+        except (TypeError, json.JSONDecodeError):
+            profile = {}
+        stale = (
+            current_feature_version is not None
+            and self.feature_version != current_feature_version
+        )
+        return {
+            'id': self.id,
+            'corpus_id': self.corpus_id,
+            'feature_version': self.feature_version,
+            'profile': profile,
+            'sample_count': self.sample_count,
+            'valid_char_count': self.valid_char_count,
+            'confidence': self.confidence,
+            'is_stale': stale,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -245,8 +299,18 @@ class StyleChunk(db.Model):
     )
     content = db.Column(db.Text, nullable=False)
     content_hash = db.Column(db.String(64), nullable=False, index=True)
+    # 一次导入文档的稳定边界；Style Window 只能在相同 article_key 内组装。
+    article_key = db.Column(db.String(64), nullable=False, default='', index=True)
     source_order = db.Column(db.Integer, nullable=False, default=0)
     char_count = db.Column(db.Integer, nullable=False, default=0)
+    style_feature_version = db.Column(db.Integer, nullable=False, default=0)
+    style_features_json = db.Column(db.Text, nullable=False, default='{}')
+    style_window_valid_chars = db.Column(db.Integer, nullable=False, default=0)
+    style_confidence = db.Column(db.Float, nullable=False, default=0.0)
+    style_window_start_order = db.Column(db.Integer, nullable=False, default=0)
+    style_window_end_order = db.Column(db.Integer, nullable=False, default=0)
+    style_signature_version = db.Column(db.Integer, nullable=False, default=0)
+    style_signature_json = db.Column(db.Text, nullable=False, default='{}')
     # 规则打标元数据：场景/节奏/叙述视角（用于硬过滤）
     scene_type = db.Column(db.String(50), nullable=False, default='mixed', index=True)
     pacing = db.Column(db.String(30), nullable=False, default='medium')
@@ -256,6 +320,8 @@ class StyleChunk(db.Model):
     # 向量（float32 二进制 BLOB）
     embedding_blob = db.Column(db.LargeBinary)
     embedding_model = db.Column(db.String(100), default='')
+    embedding_backend = db.Column(db.String(50), default='')
+    embedding_model_version = db.Column(db.String(100), default='')
     embedding_dim = db.Column(db.Integer, nullable=False, default=0)
     is_enabled = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=utcnow)
@@ -264,14 +330,23 @@ class StyleChunk(db.Model):
         data = {
             'id': self.id,
             'corpus_id': self.corpus_id,
+            'article_key': self.article_key or '',
             'source_order': self.source_order,
             'char_count': self.char_count,
+            'style_feature_version': self.style_feature_version,
+            'style_window_valid_chars': self.style_window_valid_chars,
+            'style_confidence': self.style_confidence,
+            'style_window_start_order': self.style_window_start_order,
+            'style_window_end_order': self.style_window_end_order,
+            'style_signature_version': self.style_signature_version,
             'scene_type': self.scene_type,
             'pacing': self.pacing,
             'pov': self.pov,
             'emotion': self.emotion,
             'dialogue_ratio': self.dialogue_ratio,
             'embedding_model': self.embedding_model or '',
+            'embedding_backend': self.embedding_backend or '',
+            'embedding_model_version': self.embedding_model_version or '',
             'embedding_dim': self.embedding_dim,
             'is_enabled': self.is_enabled,
         }
@@ -292,6 +367,12 @@ class GenerationRecord(db.Model):
     content = db.Column(db.Text, default='')
     # 去AI味后的内容
     deai_content = db.Column(db.Text, default='')
+    # 用户显式启用 Strict Style Rewrite 后的最终稿与本地差异快照
+    style_rewrite_content = db.Column(db.Text, default='')
+    style_diff_json = db.Column(db.Text, default='{}')
+    style_rewrite_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    style_rewrite_applied = db.Column(db.Boolean, nullable=False, default=False)
+    style_rewrite_count = db.Column(db.Integer, nullable=False, default=0)
     # 用户在全屏 Markdown 编辑器中保存的修改版
     edited_content = db.Column(db.Text, default='')
     # 局部 AI 替换记录（JSON 数组），用于追踪修改来源
@@ -330,6 +411,12 @@ class GenerationRecord(db.Model):
             'title': self.title,
             'content': self.content,
             'deai_content': self.deai_content,
+            'style_rewrite_content': self.style_rewrite_content or '',
+            'style_diff_json': self.style_diff_json or '{}',
+            'style_rewrite_enabled': bool(self.style_rewrite_enabled),
+            'style_rewrite_applied': bool(self.style_rewrite_applied),
+            'style_rewrite_count': self.style_rewrite_count or 0,
+            'final_content': self.style_rewrite_content or self.deai_content or self.content,
             'edited_content': self.edited_content,
             'edit_history': self.edit_history,
             'model_used': self.model_used,
@@ -358,8 +445,13 @@ class GenerationRecord(db.Model):
             'pinned': self.pinned,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'has_deai': bool(self.deai_content),
+            'has_style_rewrite': bool(self.style_rewrite_content),
             'has_edited': bool(self.edited_content),
-            'content_preview': (self.deai_content or self.content)[:200] + '...' if len(self.deai_content or self.content) > 200 else (self.deai_content or self.content),
+            'content_preview': (
+                (self.style_rewrite_content or self.deai_content or self.content)[:200] + '...'
+                if len(self.style_rewrite_content or self.deai_content or self.content) > 200
+                else (self.style_rewrite_content or self.deai_content or self.content)
+            ),
         }
 
     def __repr__(self):

@@ -71,13 +71,13 @@ if not os.environ.get('DATABASE_URL'):
     _db_path = os.path.join(_resolve_data_dir(), 'forestar.db').replace('\\', '/')
     os.environ['DATABASE_URL'] = f'sqlite:///{_db_path}'
 
-from flask import Flask, jsonify, render_template, request
-from config import config_by_name
-from database import init_db
-from routes.template_routes import template_bp
-from routes.generation_routes import generation_bp
-from routes.style_routes import style_bp
-from routes.style_corpora_routes import style_corpora_bp
+from flask import Flask, jsonify, render_template, request  # noqa: E402
+from config import config_by_name  # noqa: E402
+from database import init_db  # noqa: E402
+from routes.template_routes import template_bp  # noqa: E402
+from routes.generation_routes import generation_bp  # noqa: E402
+from routes.style_routes import style_bp  # noqa: E402
+from routes.style_corpora_routes import style_corpora_bp  # noqa: E402
 
 
 def create_app(config_name=None):

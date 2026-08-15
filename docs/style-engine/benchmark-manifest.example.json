@@ -1,0 +1,46 @@
+{
+  "benchmark_id": "author-a-final-v1",
+  "blind_seed": "replace-with-a-fixed-private-seed",
+  "author_profile": {
+    "corpus_id": 1
+  },
+  "generation_settings": {
+    "provider": "填写实际提供商",
+    "model": "填写实际模型",
+    "notes": "A/B/C/D 应使用相同任务、模型和输出长度要求；记录真实设置，不在此文件保存 API Key。"
+  },
+  "tasks": [
+    {
+      "id": "task-001",
+      "writing_task": "在这里记录四种方案共同使用的写作任务。",
+      "scene_type": "dialogue",
+      "reference_author_samples": [
+        "D:/PrivateBenchmark/task-001/reference-author-01.txt"
+      ],
+      "candidates": {
+        "baseline": {
+          "text": "D:/PrivateBenchmark/task-001/baseline.txt",
+          "injected_references": []
+        },
+        "existing": {
+          "text": "D:/PrivateBenchmark/task-001/existing.txt",
+          "injected_references": [
+            "D:/PrivateBenchmark/task-001/existing-reference-01.txt"
+          ]
+        },
+        "new": {
+          "text": "D:/PrivateBenchmark/task-001/new.txt",
+          "injected_references": [
+            "D:/PrivateBenchmark/task-001/new-reference-01.txt"
+          ]
+        },
+        "strict": {
+          "text": "D:/PrivateBenchmark/task-001/strict.txt",
+          "injected_references": [
+            "D:/PrivateBenchmark/task-001/strict-reference-01.txt"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -30,7 +30,7 @@ def padded_text(prefix, minimum_chars=500):
 def test_output_contract_contains_44_stable_raw_features():
     result = analyze_style_features("春风吹过小城。")
 
-    assert result["style_feature_version"] == STYLE_FEATURE_VERSION == 1
+    assert result["style_feature_version"] == STYLE_FEATURE_VERSION == 2
     assert len(STYLE_FEATURE_IDS) == len(set(STYLE_FEATURE_IDS)) == 44
     assert tuple(result["features"]) == STYLE_FEATURE_IDS
     assert all(value is None or isinstance(value, (int, float)) for value in result["features"].values())
@@ -99,7 +99,18 @@ def test_dialogue_quote_coverage_counts_paired_content_and_not_delimiters():
     assert result["statistics"]["valid_char_count"] == 300
     assert feature(result, "punctuation.quote_coverage_ratio") == 1.0
     assert feature(result, "punctuation.period_per_kchar") == pytest.approx(100 / 3)
-    assert feature(result, "punctuation.total_per_kchar") == 100.0
+    assert feature(result, "punctuation.total_per_kchar") == pytest.approx(100 / 3)
+
+
+def test_v11_function_character_proxies_exclude_common_lexical_uses():
+    text = ("地方地面土地天地过程经过不过得到觉得值得" * 30) + ("轻轻地走得快过了" * 30)
+    result = analyze_style_features(text)
+
+    valid_chars = result["statistics"]["valid_char_count"]
+    expected_rate = 30 / valid_chars * 1000
+    assert feature(result, "function.di_per_kchar") == pytest.approx(expected_rate, abs=1e-6)
+    assert feature(result, "function.de_complement_per_kchar") == pytest.approx(expected_rate, abs=1e-6)
+    assert feature(result, "function.guo_per_kchar") == pytest.approx(expected_rate, abs=1e-6)
 
 
 def test_unmatched_quote_does_not_cover_the_rest_of_text():

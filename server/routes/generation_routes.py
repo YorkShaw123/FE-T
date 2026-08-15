@@ -12,7 +12,6 @@ from services.generation_service import (
     delete_record,
     get_assembled_preview,
     transform_article_text,
-    GenerationError,
 )
 from services.generation.records import delete_all_records
 from services.errors import GenerationError, friendly_error_message

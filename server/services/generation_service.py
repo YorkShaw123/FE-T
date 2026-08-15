@@ -13,12 +13,27 @@ from services.prompt_assembler import (
     get_all_variables,
 )
 from services.api_client import LLMClient
+from services.author_style_profile_service import get_author_style_profile
 from services.errors import GenerationError, friendly_error_message
-from services.generation.editing import transform_article_text
-from services.generation.records import delete_record, get_record, get_records, update_record
+from services.generation.editing import transform_article_text  # noqa: F401 (compatibility re-export)
+from services.generation.records import (  # noqa: F401 (compatibility re-export)
+    delete_record,
+    get_record,
+    get_records,
+    update_record,
+)
 from services.summarizer import should_summarize, summarize_text
-from services.token_budget import calculate_token_budget, format_budget_error
+from services.token_budget import (
+    build_strict_style_rewrite_instruction,
+    calculate_token_budget,
+    format_budget_error,
+)
+from services.style_diff_service import analyze_style_diff
 from config import Config
+
+
+STRICT_STYLE_REWRITE_MAX_ATTEMPTS = 1
+STRICT_STYLE_REWRITE_MAX_DIFFERENCES = 6
 
 
 def utcnow():
@@ -143,6 +158,42 @@ def _messages_preview(messages):
     )
 
 
+def _prepare_strict_style_rewrite(draft, messages, style_metadata, scene_type):
+    """Build one optional rewrite request from the selected corpus profile and local Diff."""
+    selected = style_metadata.get('selected_excerpts') or []
+    corpus_id = next((item.get('corpus_id') for item in selected if item.get('corpus_id')), None)
+    if corpus_id is None:
+        return None, None, 'no_author_profile_target'
+
+    profile_record, stale = get_author_style_profile(int(corpus_id))
+    if not profile_record or stale:
+        return None, None, 'author_profile_missing_or_stale'
+    try:
+        author_profile = json.loads(profile_record.profile_json or '{}')
+    except (TypeError, json.JSONDecodeError):
+        return None, None, 'author_profile_invalid'
+
+    resolved_scene = style_metadata.get('resolved_scene_type') or scene_type
+    style_diff = analyze_style_diff(
+        draft,
+        author_profile,
+        scene_type=resolved_scene,
+        max_differences=STRICT_STYLE_REWRITE_MAX_DIFFERENCES,
+    )
+    differences = style_diff.get('differences') or []
+    if not differences:
+        return style_diff, None, 'already_close'
+
+    instruction = build_strict_style_rewrite_instruction(differences)
+    rewrite_messages = [
+        *messages,
+        {'role': 'assistant', 'content': draft},
+        {'role': 'user', 'content': instruction},
+    ]
+    style_diff['target_corpus_id'] = int(corpus_id)
+    return style_diff, rewrite_messages, 'ready'
+
+
 def generate_article(
     templates,
     variable_values,
@@ -164,6 +215,7 @@ def generate_article(
     scene_type='auto',
     style_corpus_ids=(),
     embedding_api_key='',
+    strict_style_rewrite_enabled=False,
 ):
     """
     生成文章的核心流程
@@ -272,6 +324,7 @@ def generate_article(
         thinking_enabled=thinking_enabled,
         reasoning_effort=reasoning_effort,
         messages=messages if (structured_prompt_enabled or resolved_style_mode == 'smart') else None,
+        strict_style_rewrite_enabled=strict_style_rewrite_enabled,
     )
     if token_budget['status'] == 'over':
         raise GenerationError(format_budget_error(token_budget))
@@ -285,14 +338,16 @@ def generate_article(
             client, model, messages, thinking_enabled, reasoning_effort,
             deai_enabled, deai_prompt, assembled_prompt,
             templates_used_ids, variable_values, title, provider,
-            resolved_style_mode, style_profile_snapshot,
+            resolved_style_mode, style_profile_snapshot, style_metadata,
+            scene_type, strict_style_rewrite_enabled,
         )
     else:
         return _generate_sync_flow(
             client, model, messages, thinking_enabled, reasoning_effort,
             deai_enabled, deai_prompt, assembled_prompt,
             templates_used_ids, variable_values, title, provider,
-            resolved_style_mode, style_profile_snapshot,
+            resolved_style_mode, style_profile_snapshot, style_metadata,
+            scene_type, strict_style_rewrite_enabled,
         )
 
 
@@ -300,7 +355,8 @@ def _generate_sync_flow(
     client, model, messages, thinking_enabled, reasoning_effort,
     deai_enabled, deai_prompt, assembled_prompt,
     templates_used_ids, variable_values, title, provider,
-    style_mode, style_profile_snapshot,
+    style_mode, style_profile_snapshot, style_metadata,
+    scene_type, strict_style_rewrite_enabled,
 ):
     """同步生成流程"""
     # 第一版生成
@@ -342,11 +398,38 @@ def _generate_sync_flow(
 
         deai_content = response2.get('content', '')
 
+    latest_content = deai_content or first_content
+    style_diff = {}
+    style_rewrite_content = ''
+    style_rewrite_status = 'disabled'
+    if (
+        strict_style_rewrite_enabled
+        and STRICT_STYLE_REWRITE_MAX_ATTEMPTS > 0
+        and latest_content
+    ):
+        style_diff, rewrite_messages, style_rewrite_status = _prepare_strict_style_rewrite(
+            latest_content, messages, style_metadata, scene_type
+        )
+        if rewrite_messages:
+            rewrite_response = client.generate(
+                model=model,
+                messages=rewrite_messages,
+                stream=False,
+                thinking_enabled=False,
+            )
+            style_rewrite_content = rewrite_response.get('content', '')
+            style_rewrite_status = 'applied' if style_rewrite_content else 'empty_response'
+
     # 保存记录
     record = GenerationRecord(
         title=title or '未命名',
         content=first_content,
         deai_content=deai_content,
+        style_rewrite_content=style_rewrite_content,
+        style_diff_json=json.dumps(style_diff or {}, ensure_ascii=False),
+        style_rewrite_enabled=strict_style_rewrite_enabled,
+        style_rewrite_applied=bool(style_rewrite_content),
+        style_rewrite_count=1 if style_rewrite_content else 0,
         model_used=model,
         thinking_enabled=thinking_enabled,
         reasoning_content=reasoning_content,
@@ -366,6 +449,10 @@ def _generate_sync_flow(
         'record': record.to_dict(),
         'first_content': first_content,
         'deai_content': deai_content,
+        'style_rewrite_content': style_rewrite_content,
+        'style_diff': style_diff or {},
+        'style_rewrite_status': style_rewrite_status,
+        'final_content': style_rewrite_content or deai_content or first_content,
         'reasoning_content': reasoning_content,
         'assembled_prompt': assembled_prompt,
     }
@@ -375,7 +462,8 @@ def _generate_stream_flow(
     client, model, messages, thinking_enabled, reasoning_effort,
     deai_enabled, deai_prompt, assembled_prompt,
     templates_used_ids, variable_values, title, provider,
-    style_mode, style_profile_snapshot,
+    style_mode, style_profile_snapshot, style_metadata,
+    scene_type, strict_style_rewrite_enabled,
 ):
     """流式生成流程 - 返回生成器，逐chunk产出内容"""
     # 构建流式参数
@@ -396,6 +484,9 @@ def _generate_stream_flow(
     full_content = ''
     full_reasoning = ''
     deai_content = ''
+    style_rewrite_content = ''
+    style_diff = {}
+    style_rewrite_status = 'disabled'
 
     try:
         stream_gen = client.generate_stream_aggregated(params)
@@ -448,11 +539,56 @@ def _generate_stream_flow(
                     break
             yield {'type': 'status', 'data': 'deai_done'}
 
+        latest_content = deai_content or full_content
+        if (
+            strict_style_rewrite_enabled
+            and STRICT_STYLE_REWRITE_MAX_ATTEMPTS > 0
+            and latest_content
+        ):
+            style_diff, rewrite_messages, style_rewrite_status = _prepare_strict_style_rewrite(
+                latest_content, messages, style_metadata, scene_type
+            )
+            if rewrite_messages:
+                yield {'type': 'status', 'data': 'style_rewrite_start'}
+                rewrite_params = {
+                    'model': model,
+                    'messages': rewrite_messages,
+                    'stream': True,
+                    'max_tokens': Config.DEFAULT_MAX_TOKENS,
+                }
+                rewrite_params = client.configure_generation_params(
+                    rewrite_params,
+                    thinking_enabled=False,
+                    reasoning_effort='high',
+                )
+                rewrite_stream = client.generate_stream_aggregated(rewrite_params)
+                for event in rewrite_stream:
+                    if event['type'] == 'content':
+                        style_rewrite_content += event['data']
+                        yield event
+                    elif event['type'] == 'done':
+                        break
+                style_rewrite_status = (
+                    'applied' if style_rewrite_content else 'empty_response'
+                )
+                yield {'type': 'status', 'data': 'style_rewrite_done'}
+            else:
+                yield {
+                    'type': 'status',
+                    'data': 'style_rewrite_skipped',
+                    'reason': style_rewrite_status,
+                }
+
         # 保存记录到数据库
         record = GenerationRecord(
             title=title or '未命名',
             content=full_content,
             deai_content=deai_content,
+            style_rewrite_content=style_rewrite_content,
+            style_diff_json=json.dumps(style_diff or {}, ensure_ascii=False),
+            style_rewrite_enabled=strict_style_rewrite_enabled,
+            style_rewrite_applied=bool(style_rewrite_content),
+            style_rewrite_count=1 if style_rewrite_content else 0,
             model_used=model,
             thinking_enabled=thinking_enabled,
             reasoning_content=full_reasoning,
@@ -474,6 +610,10 @@ def _generate_stream_flow(
             'reasoning_content': full_reasoning,
             'first_content': full_content,
             'deai_content': deai_content,
+            'style_rewrite_content': style_rewrite_content,
+            'style_diff': style_diff or {},
+            'style_rewrite_status': style_rewrite_status,
+            'final_content': style_rewrite_content or deai_content or full_content,
         }
 
     except GeneratorExit:
@@ -484,6 +624,11 @@ def _generate_stream_flow(
                     title=(title or '未命名') + '（未完成）',
                     content=full_content,
                     deai_content=deai_content,
+                    style_rewrite_content=style_rewrite_content,
+                    style_diff_json=json.dumps(style_diff or {}, ensure_ascii=False),
+                    style_rewrite_enabled=strict_style_rewrite_enabled,
+                    style_rewrite_applied=bool(style_rewrite_content),
+                    style_rewrite_count=1 if style_rewrite_content else 0,
                     model_used=model,
                     thinking_enabled=thinking_enabled,
                     reasoning_content=full_reasoning,
@@ -529,6 +674,7 @@ def get_assembled_preview(
     scene_type='auto',
     style_corpus_ids=(),
     embedding_api_key='',
+    strict_style_rewrite_enabled=False,
 ):
     """
     预览组装后的提示词（不调用API）
@@ -590,6 +736,7 @@ def get_assembled_preview(
         thinking_enabled=thinking_enabled,
         reasoning_effort=reasoning_effort,
         messages=messages,
+        strict_style_rewrite_enabled=strict_style_rewrite_enabled,
     )
 
     return {

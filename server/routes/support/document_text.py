@@ -10,6 +10,36 @@ MAX_ARTICLE_FILE_SIZE = 10 * 1024 * 1024
 SUPPORTED_ARTICLE_EXTENSIONS = frozenset({'.txt', '.doc', '.docx'})
 
 
+def extract_document_path(path):
+    """从本地文件路径提取文本，复用上传解析规则；不会修改原文件。"""
+    path = Path(path)
+    extension = path.suffix.lower()
+    if extension not in SUPPORTED_ARTICLE_EXTENSIONS:
+        raise ValueError('仅支持 .txt、.doc、.docx 文件')
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise ValueError(f'无法读取文件：{path.name}') from exc
+    if size > MAX_ARTICLE_FILE_SIZE:
+        raise OverflowError('文件不能超过 10 MB')
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f'无法读取文件：{path.name}') from exc
+    if not raw:
+        raise ValueError('文件内容为空')
+    if extension == '.txt':
+        text = _decode_text_file(raw)
+    elif extension == '.docx':
+        text = _extract_docx(raw)
+    else:
+        text = _extract_legacy_doc(raw)
+    text = text.replace('\x00', '').strip()
+    if not text:
+        raise ValueError('文件中没有可读取的文本内容')
+    return text
+
+
 def extract_uploaded_text(uploaded):
     if not uploaded or not uploaded.filename:
         raise ValueError('请选择要导入的文件')

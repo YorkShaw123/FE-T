@@ -17,6 +17,7 @@ class GenerationRequest:
     custom_suffix: str = ''
     deai_enabled: bool = False
     deai_prompt: str = ''
+    strict_style_rewrite_enabled: bool = False
     title: str = ''
     previous_article: str = ''
     variable_values: dict = field(default_factory=dict)
@@ -68,6 +69,7 @@ class GenerationRequest:
             custom_suffix=str(data.get('custom_suffix', '') or ''),
             deai_enabled=bool(data.get('deai_enabled', False)),
             deai_prompt=str(data.get('deai_prompt', '') or ''),
+            strict_style_rewrite_enabled=bool(data.get('strict_style_rewrite_enabled', False)),
             title=str(data.get('title', '') or ''),
             previous_article=str(data.get('previous_article', '') or ''),
             variable_values=variable_values,
@@ -103,6 +105,7 @@ class GenerationRequest:
             'custom_suffix': self.custom_suffix,
             'deai_enabled': self.deai_enabled,
             'deai_prompt': self.deai_prompt,
+            'strict_style_rewrite_enabled': self.strict_style_rewrite_enabled,
             'title': self.title,
             'previous_article': self.previous_article,
             'stream': stream,

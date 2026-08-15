@@ -156,6 +156,19 @@ cargo check --manifest-path src-tauri\Cargo.toml --locked
 
 当前 pytest 只覆盖本地服务启动、安全响应头与跨源写请求拦截等关键边界，尚未覆盖需要真实模型 API 的生成流程。Python 代码暂未启用严格静态类型检查：现有模块类型注解较少，后续应按模块渐进补充，而不是一次性开启严格模式并大范围改写。
 
+### 安装本地向量化（开发机）
+
+本地 Embedding 使用 `BAAI/bge-small-zh-v1.5` 的官方权重，在本机一次性导出 ONNX。模型约 95 MB，安装到 `%USERPROFILE%\.forestar-editor\models\bge-small-zh-v1.5`，不会进入 Git、SQLite 或 `forestar-server.exe`；临时 PyTorch/Transformers 导出环境在成功后自动删除。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-local-embedding.ps1
+.\.venv\Scripts\python scripts\verify_local_embedding.py
+```
+
+安装或更换模型后，需要在「文风管理」中对已有语料库重新执行向量化。模型缺失或损坏时，Style Retrieval 会降级为不含 semantic score 的纯本地 Style Engine。
+
+本地向量化按小批次执行，并在桌面端显示片段进度、百分比、已用时间和预计剩余时间。以本项目开发机实测，约 133 万字、2658 个片段的纯 ONNX 推理约需 2 分钟；首次模型加载、CPU 性能和磁盘速度会使实际时间有所浮动。
+
 ## 使用说明
 
 ### 1. 配置模板
@@ -252,10 +265,12 @@ npm run tauri:build
 ```
 
 > 打包说明：后端 exe 关闭了 UPX 压缩（降低杀软误报率）并注入标准 Windows 版本信息（[forestar-version-info.txt](forestar-version-info.txt)）；`build:backend` 的原始产物位于 `dist/forestar-server.exe`。
+> 默认发行包不包含可选的 ONNX Runtime，避免意外增加体积；纯本地 Style/BM25 检索不受影响。需要制作包含本地语义运行时的专用包时，先安装 `requirements-local-embedding.txt`，再运行 `powershell -ExecutionPolicy Bypass -File scripts\build-backend.ps1 -BundleLocalEmbedding`。模型文件仍需单独放入用户模型目录。
 
 ### 桌面版架构说明
 
 - **前端 100% 复用**：`server/templates/`、`server/static/` 由 Flask 直接提供，桌面窗口在后端就绪后自动导航到本地随机端口，前端代码零修改
+- **文风管理**：Style Corpus 导入、可选向量化、Embedding 设置与检索评分调试集中在独立顶级页面；工作台只保留本次生成的文风选择
 - **后端 100% 复用**：`server/services/`、`server/routes/`、`server/database/` 用 PyInstaller 编译为单文件可执行程序，由 Tauri 以 Sidecar 方式自动拉起
 - **Sidecar 启动**（`src-tauri/src/lib.rs`）：Tauri 启动时以 `shell.sidecar("forestar-server")` 拉起 Flask 后端，先探测空闲端口并通过环境变量 `FORESTAR_PORT` 传给后端，轮询该端口就绪后跳转；退出时自动 kill 子进程，避免残留
 - **`useLocalToolsDir: true`**（`tauri.conf.json`）：将 NSIS 等打包工具缓存到项目内 `src-tauri/target/.tauri/`，避免写入系统缓存目录（无权限或沙箱环境下必要）

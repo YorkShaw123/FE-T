@@ -207,7 +207,7 @@ async function loadHistoryDetail(recordId) {
             ${record.rating ? ` | 评分: ${'⭐'.repeat(record.rating)}` : ''}
         `;
 
-        $('#history-detail-content').innerHTML = formatArticle(record.deai_content || record.content);
+        $('#history-detail-content').innerHTML = formatArticle(record.final_content || record.deai_content || record.content);
 
         // 详情标签切换
         $$('.detail-tab', detail).forEach(tab => {
@@ -220,11 +220,11 @@ async function loadHistoryDetail(recordId) {
 
                 switch (tab.dataset.content) {
                     case 'final':
-                        $('#history-detail-content').innerHTML = formatArticle(record.deai_content || record.content);
+                        $('#history-detail-content').innerHTML = formatArticle(record.final_content || record.deai_content || record.content);
                         break;
                     case 'edited':
                         $('#history-detail-content').innerHTML = renderEditedHistoryDiff(
-                            record.deai_content || record.content,
+                            record.final_content || record.deai_content || record.content,
                             record.edited_content
                         );
                         break;

@@ -50,3 +50,41 @@ def test_security_headers_are_present():
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Referrer-Policy"] == "no-referrer"
+
+
+def test_style_rag_management_has_its_own_top_level_tab():
+    client = create_app("production").test_client()
+
+    html = client.get("/").get_data(as_text=True)
+    workspace = html.split('<section id="tab-workspace"', 1)[1].split(
+        '<section id="tab-templates"', 1,
+    )[0]
+    styles = html.split('<section id="tab-styles"', 1)[1].split(
+        '<section id="tab-history"', 1,
+    )[0]
+
+    assert 'data-tab="styles">文风管理' in html
+    assert 'id="style-rag-corpora-list"' in workspace
+    assert 'id="btn-open-corpus-panel"' in workspace
+    assert 'id="style-rag-embedding-key"' not in workspace
+    assert 'id="corpus-search-query"' not in workspace
+    for element_id in (
+        "style-corpus-list", "corpus-new-name", "style-rag-embedding-backend",
+        "style-rag-embedding-key", "corpus-search-query", "corpus-search-result",
+    ):
+        assert f'id="{element_id}"' in styles
+        assert html.count(f'id="{element_id}"') == 1
+
+
+def test_embedding_progress_dialog_is_present():
+    html = create_app("production").test_client().get("/").get_data(as_text=True)
+
+    for element_id in (
+        "embedding-progress-modal",
+        "embedding-progress-bar",
+        "embedding-progress-percent",
+        "embedding-progress-count",
+        "embedding-progress-remaining",
+        "btn-close-embedding-progress",
+    ):
+        assert html.count(f'id="{element_id}"') == 1

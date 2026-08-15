@@ -8,7 +8,7 @@ import statistics
 import unicodedata
 
 
-STYLE_FEATURE_VERSION = 1
+STYLE_FEATURE_VERSION = 2  # Style Feature V1.1 machine schema version
 OUTPUT_DECIMAL_PLACES = 6
 
 SHORT_SENTENCE_MAX = 12
@@ -75,6 +75,29 @@ FUNCTION_WORDS = {
     "modal_particle": ("罢了", "吗", "呢", "吧", "啊", "呀", "嘛", "哦", "啦", "呗"),
     "first_person_pronoun": ("我们", "咱们", "俺们", "咱", "俺", "我"),
     "third_person_pronoun": ("他们", "她们", "它们", "他", "她", "它"),
+}
+
+# V1.1 keeps these lightweight proxies local and deterministic while excluding
+# common lexical uses demonstrated to dominate real-corpus counts.
+FUNCTION_CHAR_EXCLUSIONS = {
+    "di": (
+        "地方", "地面", "土地", "天地", "境地", "当地", "地上", "地下",
+        "大地", "陆地", "地步", "地位", "地板", "地址", "地域", "地带",
+        "地形", "目的地",
+    ),
+    "de_complement": (
+        "得到", "获得", "取得", "觉得", "值得", "不得", "记得", "懂得",
+        "显得", "免得", "省得", "难得",
+    ),
+    "le": ("了解", "了然", "了结", "了却", "了望"),
+    "zhe": (
+        "着火", "着急", "着凉", "着迷", "着陆", "着手", "着重", "着实",
+        "执着", "沉着", "衣着",
+    ),
+    "guo": (
+        "经过", "过程", "不过", "过于", "过分", "过去", "过来", "过往",
+        "过后", "过度", "过错",
+    ),
 }
 
 
@@ -157,6 +180,13 @@ def _is_valid_char(char: str) -> bool:
 
 def _valid_char_count(text: str) -> int:
     return sum(_is_valid_char(char) for char in text)
+
+
+def count_valid_characters(text: str) -> int:
+    """按 Style Feature V1 口径统计有效字符，供窗口服务复用。"""
+    if not isinstance(text, str):
+        raise TypeError("text 必须是字符串")
+    return _valid_char_count(text)
 
 
 def _normalize_text(text: str) -> str:
@@ -355,8 +385,25 @@ def _punctuation_counts(text: str) -> dict[str, int]:
         "parentheses": _count_parentheses(text),
         "quotes": quote_marks,
     }
-    counts["total"] = sum(counts.values())
+    # Quote coverage already represents dialogue punctuation. Excluding quote
+    # marks avoids counting one pair as two extra total-punctuation events.
+    counts["total"] = sum(value for name, value in counts.items() if name != "quotes")
     return counts
+
+
+def _count_char_proxy(text: str, char: str, exclusions: tuple[str, ...] = ()) -> int:
+    excluded_positions = set()
+    for word in exclusions:
+        start = 0
+        while True:
+            index = text.find(word, start)
+            if index < 0:
+                break
+            excluded_positions.update(
+                index + offset for offset, value in enumerate(word) if value == char
+            )
+            start = index + 1
+    return sum(value == char and index not in excluded_positions for index, value in enumerate(text))
 
 
 def _count_ba_markers(text: str) -> int:
@@ -432,13 +479,13 @@ def _punctuation_features(text: str, valid_chars: int) -> dict[str, float | None
 def _function_features(text: str, valid_chars: int) -> dict[str, float | None]:
     features = {feature_id: None for feature_id in FUNCTION_FEATURE_IDS}
     if valid_chars >= MIN_CHARS_FUNCTION:
+        proxy_chars = {
+            "de": "的", "di": "地", "de_complement": "得",
+            "le": "了", "zhe": "着", "guo": "过",
+        }
         raw_counts = {
-            "de": text.count("的"),
-            "di": text.count("地"),
-            "de_complement": text.count("得"),
-            "le": text.count("了"),
-            "zhe": text.count("着"),
-            "guo": text.count("过"),
+            name: _count_char_proxy(text, char, FUNCTION_CHAR_EXCLUSIONS.get(name, ()))
+            for name, char in proxy_chars.items()
         }
         for name in ("negation", "contrast", "causal", "conditional", "time_progression", "hedge", "degree_adverb"):
             raw_counts[name] = _count_word_group(text, name)
@@ -454,7 +501,7 @@ def _function_features(text: str, valid_chars: int) -> dict[str, float | None]:
 
 
 def analyze_style_features(text: str) -> dict:
-    """提取 Style Feature V1 raw 数值，不访问网络、数据库或其他业务服务。"""
+    """提取 Style Feature V1.1 raw 数值，不访问网络、数据库或其他业务服务。"""
     if not isinstance(text, str):
         raise TypeError("text 必须是字符串")
 

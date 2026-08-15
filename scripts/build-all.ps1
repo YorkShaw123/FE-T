@@ -8,7 +8,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 Write-Host "===== 步骤1/3: 打包后端 ====="
-& (Join-Path $PSScriptRoot "build-backend.ps1")
+& (Join-Path $PSScriptRoot "build-backend.ps1") -BundleLocalEmbedding
 
 Write-Host "===== 步骤2/3: 构建 Tauri 桌面应用 ====="
 npm run tauri build

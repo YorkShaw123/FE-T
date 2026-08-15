@@ -3,7 +3,6 @@
 """
 import json
 from flask import Blueprint, request, jsonify
-from database.models import PromptTemplate
 from services.template_service import (
     create_template,
     get_template,

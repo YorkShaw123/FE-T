@@ -3,7 +3,6 @@
  * 负责语料库 CRUD、文本导入、向量化索引、检索测试，以及生成请求的语料选择。
  */
 import { $, $$, api, toast, escapeHtml, safeBind } from './utils.js';
-import { loadStyleProfile } from './styleCard.js';
 
 // ==================== 状态与工具 ====================
 
@@ -40,6 +39,10 @@ export function getEmbeddingApiKey() {
     return $('#style-rag-embedding-key')?.value.trim() || '';
 }
 
+function getEmbeddingBackend() {
+    return $('#style-rag-embedding-backend')?.value === 'remote' ? 'remote' : 'local';
+}
+
 // ==================== 渲染 ====================
 
 /** 渲染工作台语料库多选区 */
@@ -56,10 +59,11 @@ function renderCorporaCheckboxes(corpora) {
     list.innerHTML = corpora.map(corpus => {
         const checked = localStorage.getItem(corpusIndexKey(corpus.id)) === '1' ? ' checked' : '';
         const indexed = corpus.index_status === 'indexed';
+        const usable = corpus.chunk_count > 0;
         return `<label class="style-rag-corpus-item" title="${escapeHtml(corpus.description || corpus.name)}">
-            <input type="checkbox" value="${corpus.id}"${checked}${indexed ? '' : ' disabled'}>
+            <input type="checkbox" value="${corpus.id}"${checked}${usable ? '' : ' disabled'}>
             <span><strong>${escapeHtml(corpus.name)}</strong>
-                <small>${corpus.chunk_count} 片段${indexed ? ' · 已向量化' : ' · 需先向量化'}</small>
+                <small>${corpus.chunk_count} 片段${indexed ? ' · 含语义辅助' : ' · 纯本地文风检索'}</small>
             </span>
         </label>`;
     }).join('');
@@ -68,9 +72,9 @@ function renderCorporaCheckboxes(corpora) {
 /** 渲染语料库管理面板列表 */
 function renderCorpusManager(corpora) {
     const list = $('#style-corpus-list');
-    const section = $('#style-corpus-section');
-    if (!list || !section) return;
-    section.style.display = corpora.length ? '' : 'none';
+    const empty = $('#style-corpus-manager-empty');
+    if (!list) return;
+    if (empty) empty.style.display = corpora.length ? 'none' : '';
     list.innerHTML = corpora.map(corpus => {
         const modelInfo = corpus.embedding_model
             ? ` · 模型 ${escapeHtml(corpus.embedding_model)}` : '';
@@ -111,17 +115,9 @@ export async function loadCorporaList() {
 
 // ==================== 打开面板 ====================
 
-function openCorpusPanel() {
-    const panel = $('#style-card-panel');
-    const section = $('#style-corpus-section');
-    if (panel) panel.style.display = 'grid';
-    if (section) {
-        section.style.display = '';
-        section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
+function openStyleManagement() {
+    document.querySelector('.nav-tab[data-tab="styles"]')?.click();
     loadCorporaList();
-    // 同步刷新"分析对象"提示，避免用户不清楚风格说明书的分析对象
-    loadStyleProfile();
 }
 
 // ==================== 操作 ====================
@@ -172,22 +168,80 @@ async function importCorpusFile(corpusId, file) {
 }
 
 async function indexCorpus(corpusId) {
-    const apiKey = getEmbeddingApiKey() || $('#api-key-input')?.value.trim() || '';
-    if (!apiKey) {
-        toast('请先填写 Embedding 密钥或顶部 LLM API 密钥', 'warning');
+    const backend = getEmbeddingBackend();
+    const apiKey = getEmbeddingApiKey();
+    if (backend === 'remote' && !apiKey) {
+        toast('远程向量化需要独立的 Embedding 密钥', 'warning');
         return;
     }
-    toast('正在向量化全部片段，请稍候…');
+    openIndexProgress();
+    let polling = true;
+    const poll = async () => {
+        if (!polling) return;
+        try {
+            const { data } = await api(`/api/style-corpora/${corpusId}/index-progress`);
+            renderIndexProgress(data);
+        } catch (_error) {
+            // 索引 POST 的最终结果负责展示错误；短暂轮询失败不打断任务。
+        }
+        if (polling) setTimeout(poll, 500);
+    };
+    poll();
     try {
         const { data } = await api(`/api/style-corpora/${corpusId}/index`, {
             method: 'POST',
-            body: JSON.stringify({ api_key: apiKey, provider: 'siliconflow' }),
+            body: JSON.stringify({ backend, api_key: apiKey, provider: 'siliconflow' }),
+        });
+        renderIndexProgress({
+            status: 'completed', completed: data.indexed_count, total: data.indexed_count,
+            percent: 100, message: `向量化完成：${data.indexed_count} 个片段`,
+            estimated_remaining_seconds: 0,
         });
         toast(`向量化完成：${data.indexed_count} 个片段，可参与风格检索`);
         loadCorporaList();
     } catch (e) {
+        renderIndexProgress({ status: 'failed', message: `向量化失败：${e.message}` });
         toast('向量化失败: ' + e.message, 'error');
+    } finally {
+        polling = false;
     }
+}
+
+function openIndexProgress() {
+    const modal = $('#embedding-progress-modal');
+    modal.hidden = false;
+    modal.querySelector('.embedding-progress-dialog')?.classList.remove('done');
+    $('#btn-close-embedding-progress').hidden = true;
+    renderIndexProgress({
+        status: 'running', completed: 0, total: 0, percent: 0,
+        elapsed_seconds: 0, estimated_remaining_seconds: null,
+        message: '正在加载本地向量模型…',
+    });
+}
+
+function renderIndexProgress(progress = {}) {
+    const percent = Math.min(Math.max(Number(progress.percent) || 0, 0), 100);
+    const completed = Number(progress.completed) || 0;
+    const total = Number(progress.total) || 0;
+    const done = progress.status === 'completed' || progress.status === 'failed';
+    $('#embedding-progress-bar').style.width = `${percent}%`;
+    $('#embedding-progress-percent').textContent = `${Math.round(percent)}%`;
+    $('#embedding-progress-count').textContent = `${completed.toLocaleString()} / ${total.toLocaleString()} 个片段`;
+    $('#embedding-progress-message').textContent = progress.message || '正在向量化…';
+    $('#embedding-progress-elapsed').textContent = formatDuration(progress.elapsed_seconds);
+    $('#embedding-progress-remaining').textContent = progress.estimated_remaining_seconds == null
+        ? '计算中…' : formatDuration(progress.estimated_remaining_seconds);
+    $('.embedding-progress-track').setAttribute('aria-valuenow', String(Math.round(percent)));
+    $('.embedding-progress-dialog')?.classList.toggle('done', done);
+    $('#btn-close-embedding-progress').hidden = !done;
+}
+
+function formatDuration(seconds) {
+    const value = Math.max(Math.round(Number(seconds) || 0), 0);
+    if (value < 60) return `${value} 秒`;
+    const minutes = Math.floor(value / 60);
+    const remainder = value % 60;
+    return remainder ? `${minutes} 分 ${remainder} 秒` : `${minutes} 分钟`;
 }
 
 async function clearCorpus(corpusId) {
@@ -251,10 +305,25 @@ function renderSearchResult(box, data) {
     if (!box) return;
     const meta = data.meta || {};
     const items = data.items || [];
+    const queryScene = SCENE_LABELS[meta.query_scene_type] || meta.query_scene_type || '无法判断';
+    const effectiveScene = SCENE_LABELS[meta.effective_scene_type]
+        || meta.effective_scene_type || '自动';
+    const profileSummary = (meta.profile_summaries || []).map(profile => {
+        const sceneProfile = profile.scene_profile || {};
+        const sourceLabels = { mode: '精确场景', broad: '宽类别回退', global: '全局回退' };
+        return `<div class="style-debug-profile-card">
+            <strong>${escapeHtml(profile.corpus_name || `语料库 ${profile.corpus_id}`)}</strong>
+            <span>全局：${profile.sample_count || 0} 窗口 · ${(profile.valid_char_count || 0).toLocaleString()} 字 · 置信度 ${formatScore(profile.confidence)}</span>
+            <span>当前 Profile：${escapeHtml(sourceLabels[sceneProfile.source] || sceneProfile.source || '未知')} / ${escapeHtml(SCENE_LABELS[sceneProfile.resolved_mode] || sceneProfile.resolved_mode || 'global')} · ${sceneProfile.sample_count || 0} 窗口 · 置信度 ${formatScore(sceneProfile.confidence)}</span>
+            <span>Feature v${profile.feature_version ?? '—'} · Signature v${profile.signature_version ?? '—'}</span>
+        </div>`;
+    }).join('');
     const head = `<div class="style-corpus-search-head">
         <span>候选 ${meta.candidate_count ?? 0} · 向量 ${meta.vector_enabled ? '开' : '关'} · BM25 ${meta.bm25_enabled ? '开' : '关'}</span>
-        <span>场景 ${SCENE_LABELS[meta.resolved_scene_type] || meta.resolved_scene_type || '自动'} · 节奏 ${PACE_LABELS[meta.resolved_pacing] || meta.resolved_pacing || '自动'}</span>
-    </div>`;
+        <span>Query 判定：${escapeHtml(queryScene)} · 实际检索：${escapeHtml(effectiveScene)} · 节奏 ${PACE_LABELS[meta.resolved_pacing] || meta.resolved_pacing || '自动'}</span>
+    </div><div class="style-debug-profile-summary">${profileSummary}</div>${meta.embedding_fallback_reason
+        ? `<small class="style-corpus-search-empty">语义辅助未启用：${escapeHtml(meta.embedding_fallback_reason)}；当前使用纯 Style Engine。需要语义辅助时请安装对应本地模型或重新索引。</small>`
+        : ''}`;
     if (!items.length) {
         box.innerHTML = head + '<small class="style-corpus-search-empty">未命中片段，请调整过滤条件或扩大语料库</small>';
         return;
@@ -267,29 +336,67 @@ function renderSearchResult(box, data) {
             item.emotion ? `情绪：${escapeHtml(item.emotion)}` : '',
             `${item.char_count} 字`,
         ].filter(Boolean).join(' · ');
+        const scoreItems = [
+            ['综合分', item.score], ['文风分', item.style_score], ['节奏', item.rhythm_score],
+            ['标点', item.punctuation_score], ['功能词', item.function_word_score],
+            ['Style Signature', item.signature_score, item.ranking_explanation?.signature_version_compatible],
+            ['场景', item.scene_score], ['语义', item.semantic_score],
+            ['内容重合惩罚', item.content_overlap_penalty], ['Confidence', item.confidence],
+        ];
+        const scores = scoreItems.map(([label, value, compatible]) => {
+            const unavailable = value === null || value === undefined
+                || (label === 'Style Signature' && compatible === false);
+            return `<div class="style-debug-score${unavailable ? ' unavailable' : ''}">
+                <small>${escapeHtml(label)}</small><strong>${unavailable ? '未启用' : formatScore(value)}</strong>
+            </div>`;
+        }).join('');
+        const reasons = (item.debug_reasons || []).map(reason => {
+            const tone = reason.startsWith('△') ? 'difference' : 'match';
+            return `<li class="${tone}">${escapeHtml(reason)}</li>`;
+        }).join('') || '<li>暂无足够可靠的主要理由</li>';
+        const detail = item.ranking_explanation || {};
         return `<div class="style-corpus-search-item">
             <div class="style-corpus-search-item-head">
                 <strong>片段 ${index + 1}</strong>
-                <span>相关度 ${item.score}</span>
+                <span>综合分 ${formatScore(item.score)}</span>
             </div>
             <small>${labels}</small>
+            <div class="style-debug-score-grid">${scores}</div>
+            <ul class="style-debug-reasons">${reasons}</ul>
             <p>${escapeHtml(item.content.slice(0, 220))}${item.content.length > 220 ? '…' : ''}</p>
+            <details class="style-debug-details">
+                <summary>展开详细指标</summary>
+                <div class="style-debug-detail-grid">
+                    <span>Profile：${escapeHtml(detail.profile_source || '未知')} / ${escapeHtml(detail.profile_mode || '未知')}</span>
+                    <span>功能 Feature：节奏 ${detail.feature_counts?.rhythm ?? 0} · 标点 ${detail.feature_counts?.punctuation ?? 0} · 功能词 ${detail.feature_counts?.function_word ?? 0} · Signature ${detail.feature_counts?.signature ?? 0}</span>
+                    <span>BM25 排名分：${formatScore(detail.lexical_score)}</span>
+                    <span>字符 8-gram 重合：${formatScore(detail.ngram_overlap)}</span>
+                    <span>内容关键词重合：${formatScore(detail.keyword_overlap)}</span>
+                    <span>最长连续重合：${detail.longest_common_substring ?? 0} 字</span>
+                    <span>Signature 版本：${detail.signature_version_compatible ? '兼容' : '不可用或需重建'}</span>
+                </div>
+            </details>
         </div>`;
     }).join('');
 }
 
+function formatScore(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(3) : '—';
+}
+
 // ==================== 事件绑定 ====================
 
-safeBind('#btn-open-corpus-panel', 'click', openCorpusPanel);
-safeBind('#btn-test-corpus-search', 'click', () => {
-    openCorpusPanel();
-    $('#corpus-search-details')?.setAttribute('open', '');
-});
+safeBind('#btn-open-corpus-panel', 'click', openStyleManagement);
+safeBind('#btn-refresh-corpora', 'click', loadCorporaList);
 safeBind('#btn-create-corpus', 'click', createCorpus);
 safeBind('#corpus-new-name', 'keydown', event => {
     if (event.key === 'Enter') createCorpus();
 });
 safeBind('#btn-corpus-search', 'click', runSearchTest);
+safeBind('#btn-close-embedding-progress', 'click', () => {
+    $('#embedding-progress-modal').hidden = true;
+});
 safeBind('#corpus-search-query', 'keydown', event => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) runSearchTest();
 });

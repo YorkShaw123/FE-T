@@ -21,6 +21,7 @@
             <nav class="nav-tabs">
                 <button class="nav-tab active" data-tab="workspace">工作台</button>
                 <button class="nav-tab" data-tab="templates">模板管理</button>
+                <button class="nav-tab" data-tab="styles">文风管理</button>
                 <button class="nav-tab" data-tab="history">生成记录</button>
             </nav>
         </div>
@@ -123,18 +124,11 @@
                                 <p id="style-mode-help" class="strength-help">沿用当前范例文章拼接逻辑，不改变任何原有行为。</p>
                                 <div id="style-rag-control" class="style-rag-control" style="display:none;">
                                     <div class="style-rag-heading">
-                                        <div><h4>风格语料库（Style RAG）</h4><p>从海量语料中动态检索风格片段</p></div>
+                                        <div><h4>文风语料</h4><p>选择本次生成使用的语料库</p></div>
                                     </div>
                                     <div id="style-rag-corpora-list" class="style-rag-corpora-list"></div>
-                                    <div class="rag-key-row">
-                                        <label for="style-rag-embedding-key" title="与顶部 LLM 密钥不同时填写">Embedding 密钥</label>
-                                        <input id="style-rag-embedding-key" class="input-text" type="password" placeholder="留空则使用顶部 API 密钥" autocomplete="off">
-                                    </div>
-                                    <div class="style-rag-actions">
-                                        <button id="btn-open-corpus-panel" class="btn btn-outline btn-sm" type="button">管理语料库</button>
-                                        <button id="btn-test-corpus-search" class="btn btn-outline btn-sm" type="button">检索测试</button>
-                                    </div>
-                                    <small id="style-rag-empty-hint" class="style-rag-hint">暂无语料库，点击「管理语料库」导入你的风格文本</small>
+                                    <button id="btn-open-corpus-panel" class="btn btn-outline btn-sm" type="button">打开文风管理</button>
+                                    <small id="style-rag-empty-hint" class="style-rag-hint">暂无语料库，请前往「文风管理」导入风格文本</small>
                                 </div>
                                 <div class="style-control-divider"></div>
                                 <div class="section-header compact-header">
@@ -171,6 +165,17 @@
                                 </div>
                                 <textarea id="deai-prompt" class="input-textarea" rows="3"
                                     style="display:none;" placeholder="自定义去AI味提示词..."></textarea>
+                            </div>
+
+                            <div class="panel-section">
+                                <div class="section-header">
+                                    <h3>严格文风重写</h3>
+                                    <label class="switch-label">
+                                        <input type="checkbox" id="strict-style-rewrite-enabled">
+                                        <span>启用</span>
+                                    </label>
+                                </div>
+                                <p class="strength-help">仅在本地检测到明显文风偏差时，最多增加一次 API 重写调用。</p>
                             </div>
 
                             <!-- 前置文章 -->
@@ -238,6 +243,10 @@
                                 <div id="deai-content-section" style="display:none;">
                                     <div class="section-header"><h4>去AI味版</h4></div>
                                     <div id="deai-content" class="article-content"></div>
+                                </div>
+                                <div id="style-rewrite-content-section" style="display:none;">
+                                    <div class="section-header"><h4>严格文风终稿</h4></div>
+                                    <div id="style-rewrite-content" class="article-content"></div>
                                 </div>
                             </div>
 
@@ -401,39 +410,6 @@
                                 <div class="style-excerpt-help">系统按自然段切分并标记场景、视角、情绪和节奏。关闭片段可排除，置顶片段将优先入选。</div>
                                 <div id="style-excerpt-list" class="style-excerpt-list"></div>
                             </section>
-                            <section id="style-corpus-section" class="style-corpus-section" style="display:none;">
-                                <div class="style-excerpt-heading">
-                                    <div><h4>风格语料库</h4><p>导入海量风格文本，向量化后参与智能风格链检索</p></div>
-                                </div>
-                                <div class="style-corpus-create">
-                                    <input id="corpus-new-name" class="input-text" type="text" placeholder="语料库名称，如：张爱玲风格集">
-                                    <button id="btn-create-corpus" class="btn btn-outline btn-sm" type="button">新建</button>
-                                </div>
-                                <div id="style-corpus-list" class="style-corpus-list"></div>
-                                <details id="corpus-search-details" class="style-corpus-details">
-                                    <summary>检索测试</summary>
-                                    <textarea id="corpus-search-query" class="input-textarea" rows="3" placeholder="输入一句话，预览系统匹配的风格片段与评分"></textarea>
-                                    <div class="style-corpus-filters">
-                                        <select id="corpus-search-scene" class="input-select" title="场景过滤">
-                                            <option value="">全部场景</option>
-                                            <option value="dialogue">对话</option>
-                                            <option value="action">动作</option>
-                                            <option value="psychology">心理</option>
-                                            <option value="environment">环境</option>
-                                            <option value="transition">转场</option>
-                                            <option value="narration">叙述</option>
-                                        </select>
-                                        <select id="corpus-search-pacing" class="input-select" title="节奏过滤">
-                                            <option value="">全部节奏</option>
-                                            <option value="fast">紧凑</option>
-                                            <option value="medium">中等</option>
-                                            <option value="slow">舒缓</option>
-                                        </select>
-                                    </div>
-                                    <button id="btn-corpus-search" class="btn btn-outline btn-sm" type="button">检索</button>
-                                    <div id="corpus-search-result" class="corpus-search-result"></div>
-                                </details>
-                            </section>
                         </div>
                         <div class="style-card-panel-footer">
                             <button id="btn-restore-style-card" class="btn btn-outline" type="button" style="display:none;">恢复自动分析</button>
@@ -446,6 +422,76 @@
                         <h4>版本历史</h4>
                         <div id="version-list"></div>
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====== 文风管理视图 ====== -->
+        <section id="tab-styles" class="tab-content">
+            <div class="style-management-layout">
+                <header class="style-management-header">
+                    <div>
+                        <span class="style-card-kicker">LOCAL STYLE ENGINE</span>
+                        <h2>文风管理</h2>
+                        <p>集中管理风格语料、可选语义辅助和 Style RAG 检索调试。工作台只负责选择本次生成使用的文风。</p>
+                    </div>
+                    <button id="btn-refresh-corpora" class="btn btn-outline" type="button">刷新</button>
+                </header>
+
+                <div class="style-management-grid">
+                    <section class="style-management-card">
+                        <div class="style-management-card-heading">
+                            <div><h3>风格语料库</h3><p>导入本地文本后即可使用纯 Style Engine；向量化只是可选辅助。</p></div>
+                        </div>
+                        <div class="style-corpus-create">
+                            <input id="corpus-new-name" class="input-text" type="text" placeholder="语料库名称，如：个人叙事风格集">
+                            <button id="btn-create-corpus" class="btn btn-primary btn-sm" type="button">新建</button>
+                        </div>
+                        <div id="style-corpus-list" class="style-corpus-list"></div>
+                        <small id="style-corpus-manager-empty" class="style-rag-hint">暂无语料库。新建后导入 TXT、DOC 或 DOCX 文本。</small>
+                    </section>
+
+                    <aside class="style-management-sidebar">
+                        <section class="style-management-card">
+                            <div class="style-management-card-heading">
+                                <div><h3>语义辅助</h3><p>默认完全本地；远程模式只使用独立的 Embedding 密钥。</p></div>
+                            </div>
+                            <label class="style-management-field" for="style-rag-embedding-backend">Embedding 后端
+                                <select id="style-rag-embedding-backend" class="input-select">
+                                    <option value="local">本地 ONNX（无需 API Key）</option>
+                                    <option value="remote">远程 Embedding</option>
+                                </select>
+                            </label>
+                            <label class="style-management-field" for="style-rag-embedding-key">Embedding 密钥
+                                <input id="style-rag-embedding-key" class="input-text" type="password" placeholder="仅远程模式填写" autocomplete="off">
+                            </label>
+                            <p class="style-management-note">模型或运行时不存在时会自动退回 Style/BM25，不影响文风生成。</p>
+                        </section>
+
+                        <details id="corpus-search-details" class="style-corpus-details style-management-card" open>
+                            <summary>检索测试与评分调试</summary>
+                            <textarea id="corpus-search-query" class="input-textarea" rows="4" placeholder="输入一段写作上下文，检查匹配的风格片段和各项评分"></textarea>
+                            <div class="style-corpus-filters">
+                                <select id="corpus-search-scene" class="input-select" title="场景过滤">
+                                    <option value="">全部场景</option>
+                                    <option value="dialogue">对话</option>
+                                    <option value="action">动作</option>
+                                    <option value="psychology">心理</option>
+                                    <option value="environment">环境</option>
+                                    <option value="transition">转场</option>
+                                    <option value="narration">叙述</option>
+                                </select>
+                                <select id="corpus-search-pacing" class="input-select" title="节奏过滤">
+                                    <option value="">全部节奏</option>
+                                    <option value="fast">紧凑</option>
+                                    <option value="medium">中等</option>
+                                    <option value="slow">舒缓</option>
+                                </select>
+                            </div>
+                            <button id="btn-corpus-search" class="btn btn-outline btn-sm" type="button">运行检索测试</button>
+                            <div id="corpus-search-result" class="corpus-search-result"></div>
+                        </details>
+                    </aside>
                 </div>
             </div>
         </section>
@@ -555,6 +601,30 @@
             </div>
         </div>
     </section>
+
+    <!-- 本地语料向量化进度 -->
+    <div id="embedding-progress-modal" class="modal-backdrop" hidden>
+        <section class="embedding-progress-dialog" role="dialog" aria-modal="true"
+            aria-labelledby="embedding-progress-title">
+            <div class="embedding-progress-icon" aria-hidden="true">◌</div>
+            <h2 id="embedding-progress-title">正在向量化语料库</h2>
+            <p id="embedding-progress-message">正在加载本地向量模型…</p>
+            <div class="embedding-progress-track" role="progressbar" aria-valuemin="0"
+                aria-valuemax="100" aria-valuenow="0">
+                <div id="embedding-progress-bar" class="embedding-progress-bar"></div>
+            </div>
+            <div class="embedding-progress-numbers">
+                <strong id="embedding-progress-percent">0%</strong>
+                <span id="embedding-progress-count">0 / 0 个片段</span>
+            </div>
+            <div class="embedding-progress-time">
+                <span>已用 <strong id="embedding-progress-elapsed">0 秒</strong></span>
+                <span>预计剩余 <strong id="embedding-progress-remaining">计算中…</strong></span>
+            </div>
+            <small>首次加载模型会稍慢。关闭程序会中断本次向量化，但不会破坏已有语料。</small>
+            <button id="btn-close-embedding-progress" class="btn btn-primary" type="button" hidden>关闭</button>
+        </section>
+    </div>
 
     <!-- Toast通知 -->
     <div id="toast-container" class="toast-container"></div>

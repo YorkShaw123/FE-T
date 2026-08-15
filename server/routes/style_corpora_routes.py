@@ -4,6 +4,13 @@ from flask import Blueprint, jsonify, request
 from routes.support.document_text import extract_uploaded_text
 from services.errors import GenerationError, friendly_error_message
 from services.operation_guard import acquire_model_operation, release_model_operation
+from services.style_index_progress import (
+    fail_index_progress,
+    finish_index_progress,
+    get_index_progress,
+    start_index_progress,
+    update_index_progress,
+)
 from services.style_rag_service import (
     clear_corpus_chunks,
     create_corpus,
@@ -25,10 +32,24 @@ style_corpora_bp = Blueprint('style_corpora', __name__, url_prefix='/api/style-c
 def embedding_config():
     """返回 Embedding 提供商配置（前端展示用）。"""
     from config import Config
+    from services.embedding_backends import (
+        LOCAL_EMBEDDING_DIMENSION,
+        LOCAL_MODEL_ID,
+        LOCAL_MODEL_VERSION,
+    )
     return jsonify({'success': True, 'data': {
         'provider': Config.EMBEDDING_PROVIDER,
         'model': Config.EMBEDDING_MODEL,
         'dimensions': Config.EMBEDDING_DIMENSIONS,
+        'default_backend': 'local',
+        'remote_compatible': True,
+        'local': {
+            'model': LOCAL_MODEL_ID,
+            'model_version': LOCAL_MODEL_VERSION,
+            'dimensions': LOCAL_EMBEDDING_DIMENSION,
+            'runtime': 'onnxruntime-cpu',
+            'bundled': False,
+        },
     }})
 
 
@@ -106,24 +127,50 @@ def import_corpus_route(corpus_id):
 
 @style_corpora_bp.route('/<int:corpus_id>/index', methods=['POST'])
 def index_corpus_route(corpus_id):
-    """对语料库切片调用 Embedding API 生成向量（需要硅基流动 API Key）。"""
+    """使用显式选择的本地或远程后端生成可选语义向量。"""
     data = request.get_json() or {}
     try:
+        corpus = get_corpus(corpus_id)
+        start_index_progress(corpus_id, corpus.chunk_count)
         acquire_model_operation()
         try:
             count = index_corpus(
                 corpus_id,
                 api_key=data.get('api_key', ''),
                 provider=data.get('provider', 'siliconflow'),
+                backend=data.get('backend', 'auto'),
+                progress_callback=lambda completed, total: update_index_progress(
+                    corpus_id, completed, total,
+                ),
             )
         finally:
             release_model_operation()
+        finish_index_progress(corpus_id, count)
         corpus = get_corpus(corpus_id)
         return jsonify({'success': True, 'data': {'indexed_count': count, 'corpus': corpus.to_dict()}})
     except GenerationError as exc:
+        fail_index_progress(corpus_id, str(exc))
         return jsonify({'success': False, 'error': str(exc)}), 400
     except Exception as exc:
+        fail_index_progress(corpus_id, friendly_error_message(exc))
         return jsonify({'success': False, 'error': friendly_error_message(exc)}), 500
+
+
+@style_corpora_bp.route('/<int:corpus_id>/index-progress', methods=['GET'])
+def index_corpus_progress_route(corpus_id):
+    progress = get_index_progress(corpus_id)
+    if progress is None:
+        return jsonify({'success': True, 'data': {
+            'corpus_id': corpus_id,
+            'status': 'idle',
+            'completed': 0,
+            'total': 0,
+            'percent': 0.0,
+            'elapsed_seconds': 0.0,
+            'estimated_remaining_seconds': None,
+            'message': '尚未开始向量化',
+        }})
+    return jsonify({'success': True, 'data': progress})
 
 
 @style_corpora_bp.route('/<int:corpus_id>/clear', methods=['POST'])

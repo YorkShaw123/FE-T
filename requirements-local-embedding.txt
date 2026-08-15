@@ -1,0 +1,2 @@
+# Optional local Chinese semantic/scene runtime. Model files are installed separately.
+onnxruntime==1.27.0

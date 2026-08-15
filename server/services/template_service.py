@@ -4,7 +4,7 @@
 """
 import json
 from datetime import datetime, timezone
-from sqlalchemy import case, func
+from sqlalchemy import case
 from sqlalchemy.orm import aliased
 from database import db
 from database.models import PromptTemplate
@@ -343,7 +343,7 @@ def import_templates(json_data):
     """
     try:
         data = json.loads(json_data)
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         raise TemplateServiceError('导入文件不是有效的 JSON 格式，请检查文件内容后重试')
 
     if 'templates' not in data:

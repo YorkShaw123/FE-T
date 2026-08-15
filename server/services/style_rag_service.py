@@ -14,16 +14,42 @@ Style RAG 服务：海量风格语料的切片、规则打标、向量化与混�
 - 向量存 SQLite BLOB；FTS5 用 trigram tokenizer 支持中文 BM25。
 """
 import hashlib
-import math
+import json
 import re
+import time
+from collections import OrderedDict
+from copy import deepcopy
 from datetime import datetime, timezone
+from threading import Lock
 
 # 注意：numpy 为延迟导入（仅在向量化/向量检索时加载），避免拖慢后端启动。
 from config import Config
 from database import db
-from database.models import StyleCorpus, StyleChunk
-from services.api_client import LLMClient, LLMClientError
+from database.models import AuthorStyleProfile, StyleCorpus, StyleChunk
+from services.embedding_backends import (
+    EmbeddingBackendError,
+    EmbeddingBackendUnavailable,
+    RemoteEmbeddingBackend,
+    create_embedding_backend,
+)
+from services.author_style_profile_service import (
+    build_author_style_profile,
+    get_author_style_profile,
+    merge_target_profiles,
+    resolve_mode_profile,
+)
 from services.errors import GenerationError
+from services.style_chunk_service import split_corpus_text
+from services.style_feature_service import STYLE_FEATURE_VERSION
+from services.style_window_service import iter_style_window_analyses
+from services.style_retrieval_service import (
+    content_diversity_similarity,
+    content_leakage_metrics,
+    final_retrieval_score,
+    explain_style_feature_matches,
+    scene_similarity,
+    style_similarity_scores,
+)
 
 
 SCENE_TYPES = {'dialogue', 'action', 'psychology', 'environment', 'transition', 'narration', 'mixed'}
@@ -67,62 +93,6 @@ _EMOTION_ORDER = ['愤怒', '悲伤', '恐惧', '紧张', '温柔', '喜悦', '�
 
 def _content_hash(content):
     return hashlib.sha256((content or '').encode('utf-8')).hexdigest()
-
-
-def _split_long_paragraph(paragraph, maximum):
-    """超长段落按句号/感叹号/问号寻找语义断点拆分，严禁把句子切成两半。
-
-    若整段无任何句末标点（极端情况），按 maximum 硬切兜底，避免切片超限。
-    """
-    sentences = re.split(r'(?<=[。！？!?])', paragraph)
-    if len(sentences) == 1:
-        # 无句子边界：固定长度硬切（此时不存在"语义断点"可保）
-        return [paragraph[i:i + maximum] for i in range(0, len(paragraph), maximum)]
-    chunks, current = [], ''
-    for sentence in sentences:
-        if current and len(current) + len(sentence) > maximum:
-            chunks.append(current.strip())
-            current = sentence
-        else:
-            current += sentence
-    if current.strip():
-        chunks.append(current.strip())
-    return chunks
-
-
-def split_corpus_text(content, target=420, minimum=200, maximum=900):
-    """按自然段聚合为 200~900 字的风格切片。
-
-    切片以完整自然段为边界，连续短对话段合并为"对话互动块"；
-    超长描写段按句号断点拆分。返回切片列表。
-    """
-    raw_paragraphs = [item.strip() for item in re.split(r'\n\s*\n+', content or '') if item.strip()]
-    paragraphs = []
-    for paragraph in raw_paragraphs:
-        if len(paragraph) > maximum:
-            paragraphs.extend(_split_long_paragraph(paragraph, maximum))
-        else:
-            paragraphs.append(paragraph)
-
-    chunks, current, current_length = [], [], 0
-    for paragraph in paragraphs:
-        next_length = current_length + len(paragraph) + (2 if current else 0)
-        # 超出上限：先结算当前块（若为空则直接独立成块）
-        if current and next_length > maximum:
-            chunks.append('\n\n'.join(current))
-            current, current_length = [], 0
-        current.append(paragraph)
-        current_length += len(paragraph) + (2 if len(current) > 1 else 0)
-        if current_length >= target:
-            chunks.append('\n\n'.join(current))
-            current, current_length = [], 0
-    if current:
-        tail = '\n\n'.join(current)
-        if chunks and len(tail) < minimum and len(chunks[-1]) + len(tail) + 2 <= maximum:
-            chunks[-1] += '\n\n' + tail
-        else:
-            chunks.append(tail)
-    return [item for item in chunks if item.strip()]
 
 
 def _dialogue_ratio(content):
@@ -189,6 +159,13 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _fts_available():
+    row = db.session.execute(db.text(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'style_chunks_fts'"
+    )).first()
+    return row is not None
+
+
 # ---------- 语料库 CRUD ----------
 
 def create_corpus(name, description=''):
@@ -229,10 +206,11 @@ def update_corpus(corpus_id, name=None, description=None):
 def delete_corpus(corpus_id):
     corpus = get_corpus(corpus_id)
     # 先清理 FTS5 虚拟表（不受 ORM 级联管理）
-    db.session.execute(db.text(
-        "DELETE FROM style_chunks_fts WHERE rowid IN "
-        "(SELECT id FROM style_chunks WHERE corpus_id = :cid)"
-    ), {'cid': corpus_id})
+    if _fts_available():
+        db.session.execute(db.text(
+            "DELETE FROM style_chunks_fts WHERE rowid IN "
+            "(SELECT id FROM style_chunks WHERE corpus_id = :cid)"
+        ), {'cid': corpus_id})
     db.session.execute(db.text(
         "DELETE FROM style_chunks WHERE corpus_id = :cid"
     ), {'cid': corpus_id})
@@ -259,13 +237,16 @@ def import_corpus_text(corpus_id, text, filename=''):
     # 清空旧内容：必须先清理 FTS5（其 rowid 依赖 style_chunks.id），再删 style_chunks。
     # 若先执行 ORM delete，随后的 execute() 会触发 autoflush 提前删掉 style_chunks，
     # 导致 FTS 残留旧行，新切片 id 复用后插入 FTS 触发 rowid 冲突（IntegrityError）。
-    db.session.execute(db.text(
-        "DELETE FROM style_chunks_fts WHERE rowid IN "
-        "(SELECT id FROM style_chunks WHERE corpus_id = :cid)"
-    ), {'cid': corpus_id})
+    fts_available = _fts_available()
+    if fts_available:
+        db.session.execute(db.text(
+            "DELETE FROM style_chunks_fts WHERE rowid IN "
+            "(SELECT id FROM style_chunks WHERE corpus_id = :cid)"
+        ), {'cid': corpus_id})
     StyleChunk.query.filter_by(corpus_id=corpus_id).delete(synchronize_session=False)
 
     now = _now()
+    article_key = _content_hash(text)
     inserted = []
     for index, content in enumerate(chunks):
         tag = rule_tag_chunk(content)
@@ -273,6 +254,7 @@ def import_corpus_text(corpus_id, text, filename=''):
             corpus_id=corpus_id,
             content=content,
             content_hash=_content_hash(content),
+            article_key=article_key,
             source_order=index,
             char_count=len(content),
             scene_type=tag['scene_type'],
@@ -284,10 +266,20 @@ def import_corpus_text(corpus_id, text, filename=''):
         )
         db.session.add(chunk)
         db.session.flush()  # 取得 chunk.id 供 FTS5 rowid 使用
-        db.session.execute(db.text(
-            "INSERT INTO style_chunks_fts(rowid, content) VALUES (:rid, :content)"
-        ), {'rid': chunk.id, 'content': content})
+        if fts_available:
+            db.session.execute(db.text(
+                "INSERT INTO style_chunks_fts(rowid, content) VALUES (:rid, :content)"
+            ), {'rid': chunk.id, 'content': content})
         inserted.append(chunk)
+
+    for analysis in iter_style_window_analyses(inserted):
+        chunk = analysis.source
+        chunk.style_feature_version = STYLE_FEATURE_VERSION
+        chunk.style_features_json = json.dumps(analysis.features, ensure_ascii=False, separators=(',', ':'))
+        chunk.style_window_valid_chars = analysis.valid_char_count
+        chunk.style_confidence = analysis.confidence['score']
+        chunk.style_window_start_order = analysis.start_order
+        chunk.style_window_end_order = analysis.end_order
 
     corpus.source_filename = filename or corpus.source_filename
     corpus.total_chars = len(text)
@@ -295,7 +287,10 @@ def import_corpus_text(corpus_id, text, filename=''):
     # 文本变更后，旧向量失效
     corpus.index_status = 'imported'
     corpus.embedding_model = ''
+    corpus.embedding_backend = ''
+    corpus.embedding_model_version = ''
     corpus.embedding_dim = 0
+    corpus.signature_version = 0
     corpus.updated_at = now
     db.session.commit()
     return len(inserted)
@@ -312,50 +307,89 @@ def list_chunks(corpus_id, page=1, per_page=50):
 def clear_corpus_chunks(corpus_id):
     corpus = get_corpus(corpus_id)
     # 同样必须先清 FTS5 再删 style_chunks，避免 autoflush 顺序导致 FTS 残留
-    db.session.execute(db.text(
-        "DELETE FROM style_chunks_fts WHERE rowid IN "
-        "(SELECT id FROM style_chunks WHERE corpus_id = :cid)"
-    ), {'cid': corpus_id})
+    if _fts_available():
+        db.session.execute(db.text(
+            "DELETE FROM style_chunks_fts WHERE rowid IN "
+            "(SELECT id FROM style_chunks WHERE corpus_id = :cid)"
+        ), {'cid': corpus_id})
     StyleChunk.query.filter_by(corpus_id=corpus_id).delete(synchronize_session=False)
     corpus.chunk_count = 0
     corpus.total_chars = 0
     corpus.index_status = 'empty'
     corpus.embedding_model = ''
+    corpus.embedding_backend = ''
+    corpus.embedding_model_version = ''
     corpus.embedding_dim = 0
+    corpus.signature_version = 0
     corpus.updated_at = _now()
     db.session.commit()
 
 
 # ---------- 向量化（Embedding） ----------
 
-def index_corpus(corpus_id, api_key, provider='siliconflow'):
-    """调用 Embedding API 为语料库全部切片生成向量并写入 BLOB。"""
+LOCAL_INDEX_BATCH_SIZE = 16
+REMOTE_INDEX_BATCH_SIZE = 32
+
+
+def index_corpus(
+    corpus_id,
+    api_key='',
+    provider='siliconflow',
+    backend='auto',
+    model_dir=None,
+    progress_callback=None,
+):
+    """用选定后端生成向量；旧调用传 API Key 时仍自动选择远程后端。"""
     corpus = get_corpus(corpus_id)
     chunks = StyleChunk.query.filter_by(
         corpus_id=corpus_id, is_enabled=True
     ).order_by(StyleChunk.id).all()
     if not chunks:
         raise GenerationError('语料库为空，请先导入文本')
-    api_key = (api_key or '').strip()
-    if not api_key:
-        raise GenerationError('请输入硅基流动 API 密钥用于向量化')
-
-    client = LLMClient(provider=provider, api_key=api_key)
     try:
-        vectors = client.embed([chunk.content for chunk in chunks])
-    except LLMClientError as exc:
+        embedding_backend = create_embedding_backend(
+            backend, api_key=api_key, provider=provider, model_dir=model_dir,
+        )
+        batch_size = (
+            REMOTE_INDEX_BATCH_SIZE
+            if isinstance(embedding_backend, RemoteEmbeddingBackend)
+            else LOCAL_INDEX_BATCH_SIZE
+        )
+        np = _np()  # 延迟加载 numpy（向量写入需要）
+        total = len(chunks)
+        if progress_callback:
+            progress_callback(0, total)
+        for offset in range(0, total, batch_size):
+            batch_chunks = chunks[offset:offset + batch_size]
+            vectors = embedding_backend.embed_batch([chunk.content for chunk in batch_chunks])
+            if len(vectors) != len(batch_chunks):
+                raise GenerationError('向量数量与切片数量不一致，请重试')
+            arrays = [np.asarray(vector, dtype=np.float32) for vector in vectors]
+            if any(
+                array.ndim != 1 or array.shape[0] != embedding_backend.dimension
+                for array in arrays
+            ):
+                raise GenerationError('Embedding 返回维度与 backend 声明不一致，索引未写入')
+            for chunk, array in zip(batch_chunks, arrays):
+                chunk.embedding_blob = array.tobytes()
+                chunk.embedding_backend = embedding_backend.backend_id
+                chunk.embedding_model = embedding_backend.model_id
+                chunk.embedding_model_version = embedding_backend.model_version
+                chunk.embedding_dim = embedding_backend.dimension
+            if progress_callback:
+                progress_callback(min(offset + len(batch_chunks), total), total)
+    except (EmbeddingBackendUnavailable, EmbeddingBackendError) as exc:
+        db.session.rollback()
         raise GenerationError(str(exc)) from exc
-    if len(vectors) != len(chunks):
-        raise GenerationError('向量数量与切片数量不一致，请重试')
+    except Exception:
+        db.session.rollback()
+        raise
 
     now = _now()
-    np = _np()  # 延迟加载 numpy（向量写入需要）
-    for chunk, vector in zip(chunks, vectors):
-        chunk.embedding_blob = np.asarray(vector, dtype=np.float32).tobytes()
-        chunk.embedding_model = Config.EMBEDDING_MODEL
-        chunk.embedding_dim = Config.EMBEDDING_DIMENSIONS
-    corpus.embedding_model = Config.EMBEDDING_MODEL
-    corpus.embedding_dim = Config.EMBEDDING_DIMENSIONS
+    corpus.embedding_backend = embedding_backend.backend_id
+    corpus.embedding_model = embedding_backend.model_id
+    corpus.embedding_model_version = embedding_backend.model_version
+    corpus.embedding_dim = embedding_backend.dimension
     corpus.index_status = 'indexed'
     corpus.updated_at = now
     db.session.commit()
@@ -376,20 +410,26 @@ def _np():
     return _NUMPY_MODULE
 
 
-def _load_matrix(chunks):
+def _load_matrix_with_chunks(chunks):
     """把切片向量 BLOB 恢复为 (N, dim) 归一化矩阵；无向量数据返回 None。"""
     np = _np()  # 延迟加载 numpy（向量矩阵计算需要）
-    rows, dim = [], None
+    rows, vector_chunks, dim = [], [], None
     for chunk in chunks:
         blob = chunk.embedding_blob
         if not blob:
             continue
         arr = np.frombuffer(blob, dtype=np.float32)
+        declared_dim = getattr(chunk, 'embedding_dim', arr.shape[0])
+        if declared_dim <= 0 or arr.shape[0] != declared_dim:
+            continue
         if dim is None:
             dim = arr.shape[0]
+        if arr.shape[0] != dim:
+            continue
         rows.append(arr)
+        vector_chunks.append(chunk)
     if not rows:
-        return None
+        return None, []
     matrix = np.stack(rows)
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
@@ -397,7 +437,35 @@ def _load_matrix(chunks):
     # 最大候选池（5000×1024）约 19.5 MiB；避免 `matrix / norms` 再复制一整份，
     # 能显著降低 Style RAG 检索峰值内存，同时保持算法与返回值不变。
     matrix /= norms
-    return matrix
+    return matrix, vector_chunks
+
+
+def _load_matrix(chunks):
+    """兼容旧测试/内部调用：仅返回归一化矩阵。"""
+    return _load_matrix_with_chunks(chunks)[0]
+
+
+def _embedding_signature(chunk):
+    """把旧 BGE-M3 索引映射到兼容远程签名；其他缺元数据索引不猜测。"""
+    if not chunk.embedding_blob:
+        return None
+    backend = chunk.embedding_backend or ''
+    version = chunk.embedding_model_version or ''
+    if not backend and chunk.embedding_model == Config.EMBEDDING_MODEL:
+        backend = RemoteEmbeddingBackend.backend_id
+        version = RemoteEmbeddingBackend.model_version
+    if not all((backend, chunk.embedding_model, version, chunk.embedding_dim)):
+        return None
+    return backend, chunk.embedding_model, version, chunk.embedding_dim
+
+
+def _query_embedding_backend(signature, api_key, provider):
+    backend_id = signature[0]
+    kind = 'remote' if backend_id.startswith('remote:') else 'local'
+    backend = create_embedding_backend(kind, api_key=api_key, provider=provider)
+    if backend.signature != signature:
+        raise EmbeddingBackendUnavailable('Embedding 模型签名已变化，请重新索引语料库')
+    return backend
 
 
 def _bm25_scores(corpus_ids, query_text, limit=60):
@@ -406,7 +474,8 @@ def _bm25_scores(corpus_ids, query_text, limit=60):
     trigram 分词下，未加引号的查询词默认按 AND 且要求连续短语出现，过于苛刻；
     因此把查询切为 3~12 字的词/窗口，用 OR 连接（含引号短语），提升召回。
     """
-    if not query_text or not query_text.strip():
+    corpus_ids = tuple(sorted({int(corpus_id) for corpus_id in corpus_ids or ()}))
+    if not query_text or not query_text.strip() or not corpus_ids or not _fts_available():
         return {}
     cleaned = re.sub(r'[\s，。！？；：、,.!?;:"“”‘’()（）\[\]{}<>]+', ' ', query_text).strip()
     words = [word for word in cleaned.split(' ') if len(word) >= 3]
@@ -421,10 +490,15 @@ def _bm25_scores(corpus_ids, query_text, limit=60):
             pieces.extend(word[i:i + 8] for i in range(0, len(word), 8))
     pieces = list(dict.fromkeys(pieces))[:10]
     match_expr = ' OR '.join(f'"{piece}"' for piece in pieces)
+    corpus_params = {f'cid_{index}': corpus_id for index, corpus_id in enumerate(corpus_ids)}
+    placeholders = ', '.join(f':{name}' for name in corpus_params)
     rows = db.session.execute(db.text(
-        "SELECT rowid, bm25(style_chunks_fts) FROM style_chunks_fts "
-        "WHERE content MATCH :q ORDER BY bm25(style_chunks_fts) LIMIT :limit"
-    ), {'q': match_expr, 'limit': limit}).fetchall()
+        "SELECT f.rowid, bm25(style_chunks_fts) FROM style_chunks_fts AS f "
+        "JOIN style_chunks AS c ON c.id = f.rowid "
+        f"WHERE style_chunks_fts MATCH :q AND c.corpus_id IN ({placeholders}) "
+        "AND c.is_enabled = 1 "
+        "ORDER BY bm25(style_chunks_fts) LIMIT :limit"
+    ), {'q': match_expr, 'limit': limit, **corpus_params}).fetchall()
     # bm25() 返回值越小越相关，取负转为正向分数
     return {int(row[0]): -float(row[1]) for row in rows}
 
@@ -462,6 +536,99 @@ def _mmr_rerank(candidates, similarity_map, lambda_=0.7, top_k=3):
     return selected
 
 
+def _mmr_rerank_lazy(candidates, similarity_fn, lambda_=0.7, top_k=3):
+    """仅计算实际参与 MMR 选择的候选对，避免预建完整 N×N 相似度矩阵。"""
+    selected, pool = [], candidates[:]
+    while len(selected) < top_k and pool:
+        best, best_score = None, -float('inf')
+        for index, (chunk_id, relevance) in enumerate(pool):
+            diversity_penalty = max(
+                (similarity_fn(chosen_id, chunk_id) for chosen_id, _score in selected),
+                default=0.0,
+            )
+            score = lambda_ * relevance - (1 - lambda_) * diversity_penalty
+            if score > best_score:
+                best, best_score = index, score
+        if best is None:
+            break
+        selected.append(pool.pop(best))
+    return selected
+
+
+SEARCH_RESULT_CACHE_TTL_SECONDS = 30.0
+SEARCH_RESULT_CACHE_MAX_ENTRIES = 16
+SEARCH_RERANK_LIMIT = 60
+_SEARCH_RESULT_CACHE = OrderedDict()
+_SEARCH_RESULT_CACHE_LOCK = Lock()
+
+
+def _search_cache_key(
+    query_text, corpus_ids, scene_type, pacing, pov, top_k, api_key, provider, mmr_lambda,
+):
+    """用 corpus 版本生成短期缓存键；不保存 API Key 明文。"""
+    if db.engine.url.database in (None, ':memory:'):
+        return None
+    corpus_query = db.session.query(
+        StyleCorpus.id, StyleCorpus.updated_at, StyleCorpus.chunk_count,
+        StyleCorpus.embedding_backend, StyleCorpus.embedding_model_version,
+    )
+    if corpus_ids:
+        corpus_query = corpus_query.filter(StyleCorpus.id.in_(corpus_ids))
+    profile_versions = {
+        row.corpus_id: (
+            row.feature_version,
+            row.updated_at.isoformat() if row.updated_at else '',
+        )
+        for row in db.session.query(
+            AuthorStyleProfile.corpus_id,
+            AuthorStyleProfile.feature_version,
+            AuthorStyleProfile.updated_at,
+        ).all()
+    }
+    versions = tuple(
+        (
+            row.id,
+            row.updated_at.isoformat() if row.updated_at else '',
+            row.chunk_count,
+            row.embedding_backend or '',
+            row.embedding_model_version or '',
+            profile_versions.get(row.id),
+        )
+        for row in corpus_query.order_by(StyleCorpus.id).all()
+    )
+    key_fingerprint = hashlib.sha256((api_key or '').encode('utf-8')).hexdigest()[:12]
+    return (
+        query_text, tuple(sorted(int(item) for item in corpus_ids or ())), scene_type,
+        pacing, pov, int(top_k), provider, round(float(mmr_lambda), 4), key_fingerprint, versions,
+    )
+
+
+def _get_cached_search(key):
+    if key is None:
+        return None
+    now = time.monotonic()
+    with _SEARCH_RESULT_CACHE_LOCK:
+        cached = _SEARCH_RESULT_CACHE.get(key)
+        if cached is None:
+            return None
+        created_at, result = cached
+        if now - created_at > SEARCH_RESULT_CACHE_TTL_SECONDS:
+            _SEARCH_RESULT_CACHE.pop(key, None)
+            return None
+        _SEARCH_RESULT_CACHE.move_to_end(key)
+        return deepcopy(result)
+
+
+def _set_cached_search(key, result):
+    if key is None:
+        return
+    with _SEARCH_RESULT_CACHE_LOCK:
+        _SEARCH_RESULT_CACHE[key] = (time.monotonic(), deepcopy(result))
+        _SEARCH_RESULT_CACHE.move_to_end(key)
+        while len(_SEARCH_RESULT_CACHE) > SEARCH_RESULT_CACHE_MAX_ENTRIES:
+            _SEARCH_RESULT_CACHE.popitem(last=False)
+
+
 def hybrid_search_style(
     query_text,
     corpus_ids=None,
@@ -479,13 +646,23 @@ def hybrid_search_style(
     """
     if not query_text or not query_text.strip():
         raise GenerationError('检索文本不能为空')
+    cache_key = _search_cache_key(
+        query_text, corpus_ids, scene_type, pacing, pov, top_k, api_key, provider, mmr_lambda,
+    )
+    cached = _get_cached_search(cache_key)
+    if cached is not None:
+        cached[1]['cache_hit'] = True
+        return cached
+    query_tags = rule_tag_chunk(query_text)
+    requested_scene = scene_type if scene_type not in (None, '', 'auto') else None
+    effective_scene = requested_scene or query_tags['scene_type']
 
     # 1) 候选池 + 标签硬过滤
     query = StyleChunk.query.filter(StyleChunk.is_enabled.is_(True))
     if corpus_ids:
         query = query.filter(StyleChunk.corpus_id.in_(corpus_ids))
-    if scene_type:
-        query = query.filter(StyleChunk.scene_type == scene_type)
+    if requested_scene:
+        query = query.filter(StyleChunk.scene_type == requested_scene)
     if pacing:
         query = query.filter(StyleChunk.pacing == pacing)
     if pov:
@@ -496,7 +673,7 @@ def hybrid_search_style(
             f'检索候选超过 {Config.STYLE_SEARCH_MAX_CANDIDATES} 个，请选择更少的语料库或增加过滤条件'
         )
     relaxed_scene = False
-    if not chunks and scene_type:
+    if not chunks and requested_scene:
         # 场景硬过滤无候选时放宽场景条件重试，避免风格检索落空
         relaxed_scene = True
         query = StyleChunk.query.filter(StyleChunk.is_enabled.is_(True))
@@ -512,90 +689,268 @@ def hybrid_search_style(
                 f'检索候选超过 {Config.STYLE_SEARCH_MAX_CANDIDATES} 个，请选择更少的语料库或增加过滤条件'
             )
     if not chunks:
-        return [], {'mode': 'empty', 'reason': '无满足过滤条件的片段'}
+        result = ([], {'mode': 'empty', 'reason': '无满足过滤条件的片段'})
+        _set_cached_search(cache_key, result)
+        return result
 
     chunk_by_id = {chunk.id: chunk for chunk in chunks}
     corpus_ids_used = sorted({chunk.corpus_id for chunk in chunks})
 
     # 2) 向量余弦检索（主信号）
     vector_ranked, vector_scores = [], {}
-    matrix = None
+    matrix, vector_chunks = None, []
+    vector_fallback_reason = ''
     api_key = (api_key or '').strip()
-    if api_key:
-        matrix = _load_matrix(chunks)
+    blob_chunks = [chunk for chunk in chunks if chunk.embedding_blob]
+    signatures = {_embedding_signature(chunk) for chunk in blob_chunks}
+    has_incomplete_signature = None in signatures
+    signatures.discard(None)
+    if has_incomplete_signature:
+        vector_fallback_reason = '索引缺少完整模型元数据，请重新索引'
+    elif len(signatures) == 1:
+        signature = next(iter(signatures))
+        compatible_chunks = [chunk for chunk in chunks if _embedding_signature(chunk) == signature]
+        matrix, vector_chunks = _load_matrix_with_chunks(compatible_chunks)
         if matrix is not None:
             try:
-                client = LLMClient(provider=provider, api_key=api_key)
-                q_vec = client.embed([query_text])[0]
+                embedding_backend = _query_embedding_backend(signature, api_key, provider)
+                q_vec = embedding_backend.embed_text(query_text, is_query=True)
                 np = _np()  # 延迟加载 numpy（向量余弦计算需要）
                 q_vec = np.asarray(q_vec, dtype=np.float32)
+                if q_vec.shape != (signature[3],):
+                    raise EmbeddingBackendError('查询向量维度与索引不一致')
                 q_norm = np.linalg.norm(q_vec)
                 if q_norm > 0:
                     q_vec = q_vec / q_norm
                     scores = matrix @ q_vec  # 余弦相似度（矩阵已归一化）
                     order = np.argsort(-scores)
-                    vector_ranked = [chunks[i].id for i in order][:60]
-                    vector_scores = {chunks[i].id: float(scores[i]) for i in order}
-            except LLMClientError as exc:
-                raise GenerationError(str(exc)) from exc
+                    vector_ranked = [vector_chunks[i].id for i in order][:60]
+                    vector_scores = {vector_chunks[i].id: float(scores[i]) for i in order}
+            except (EmbeddingBackendUnavailable, EmbeddingBackendError) as exc:
+                matrix, vector_chunks = None, []
+                vector_fallback_reason = str(exc)
+    elif len(signatures) > 1:
+        vector_fallback_reason = '候选语料库使用不同 Embedding 模型，请统一重新索引'
+    elif blob_chunks:
+        vector_fallback_reason = '索引缺少完整模型元数据，请重新索引'
+    else:
+        vector_fallback_reason = '语料库没有可用 Embedding 索引'
 
     # 3) FTS5 BM25（词汇级补充信号）
     bm25_scores = _bm25_scores(corpus_ids_used, query_text)
 
-    # 4) RRF 融合
-    fused = _rrf_rank(vector_ranked, [cid for cid in sorted(bm25_scores, key=lambda c: -bm25_scores[c])])
-    if not fused:
-        raise GenerationError('检索未命中任何片段，请调整过滤条件或扩大语料库')
+    # 4) 加载/重建 corpus 统计 Profile；Style 是主排序信号。
+    profiles = {}
+    for corpus_id in corpus_ids_used:
+        record, stale = get_author_style_profile(corpus_id)
+        corpus = chunk_by_id[next(
+            chunk_id for chunk_id, chunk in chunk_by_id.items() if chunk.corpus_id == corpus_id
+        )].corpus
+        profile_outdated = bool(
+            record and corpus and corpus.updated_at
+            and (not record.updated_at or record.updated_at < corpus.updated_at)
+        )
+        if not record or stale or profile_outdated:
+            record = build_author_style_profile(corpus_id)
+        profiles[corpus_id] = json.loads(record.profile_json)
 
-    ranked = sorted(fused.items(), key=lambda item: -item[1])
+    profile_resolutions = {
+        corpus_id: resolve_mode_profile(profile, effective_scene)
+        for corpus_id, profile in profiles.items()
+    }
+    common_target_profile = merge_target_profiles([
+        resolution['profile'] for resolution in profile_resolutions.values()
+    ])
 
-    # 5) MMR 多样性重排（基于向量相似度）
-    candidates = []
-    for chunk_id, _ in ranked[:40]:
-        chunk = chunk_by_id.get(chunk_id)
-        if chunk:
-            candidates.append((chunk_id, float(fused[chunk_id])))
-    if len(candidates) > top_k and matrix is not None:
-        # 片段间余弦相似度矩阵（避免句式重复）
-        sim_map = {}
-        id_to_row = {chunk.id: idx for idx, chunk in enumerate(chunks)}
-        idxs = [id_to_row[cid] for cid in candidates if cid in id_to_row]
-        sub = matrix[idxs] if idxs else None
-        if sub is not None:
-            sub_norms = np.linalg.norm(sub, axis=1, keepdims=True)
-            sub_norms[sub_norms == 0] = 1.0
-            sub = sub / sub_norms
-            sim = sub @ sub.T
-            valid_ids = [cid for cid in candidates if cid in id_to_row]
-            for i, cid_i in enumerate(valid_ids):
-                for j, cid_j in enumerate(valid_ids):
-                    sim_map[(cid_i, cid_j)] = float(sim[i, j])
-        selected = _mmr_rerank(candidates, sim_map, lambda_=mmr_lambda, top_k=top_k)
-    else:
-        selected = candidates[:top_k]
+    bm25_ranked = [
+        chunk_id
+        for chunk_id in sorted(bm25_scores, key=lambda chunk_id: -bm25_scores[chunk_id])
+        if chunk_id in chunk_by_id
+    ]
+    bm25_rank_scores = {
+        chunk_id: 1.0 - rank / max(1, len(bm25_ranked))
+        for rank, chunk_id in enumerate(bm25_ranked)
+    }
+    score_details = {}
+    preliminary_candidates = []
+    for chunk in chunks:
+        try:
+            feature_payload = json.loads(chunk.style_features_json or '{}')
+        except (TypeError, json.JSONDecodeError):
+            feature_payload = {}
+        raw_features = feature_payload.get('features') or {}
+        try:
+            signature_payload_data = json.loads(chunk.style_signature_json or '{}')
+        except (TypeError, json.JSONDecodeError):
+            signature_payload_data = {}
+        raw_signature = signature_payload_data.get('values') or {}
+        profile_resolution = profile_resolutions[chunk.corpus_id]
+        style_scores = style_similarity_scores(
+            raw_features,
+            common_target_profile,
+            raw_signature=raw_signature,
+            signature_version=(
+                chunk.style_signature_version if len(profile_resolutions) == 1 else None
+            ),
+        )
+        style_scores['confidence'] = round(
+            min(style_scores['confidence'], max(0.0, min(1.0, chunk.style_confidence or 0.0))),
+            6,
+        )
+        semantic_raw = vector_scores.get(chunk.id)
+        semantic_score = (semantic_raw + 1.0) / 2.0 if semantic_raw is not None else None
+        lexical_score = bm25_rank_scores.get(chunk.id, 0.0)
+        scene_score = scene_similarity(chunk.scene_type, effective_scene)
+        base_score = final_retrieval_score(
+            style_score=style_scores['style_score'],
+            scene_score=scene_score,
+            semantic_score=semantic_score,
+            lexical_score=lexical_score,
+            leakage_penalty=0.0,
+        )
+        score_details[chunk.id] = {
+            **style_scores,
+            'scene_score': round(scene_score, 6),
+            'semantic_score': round(semantic_score, 6) if semantic_score is not None else None,
+            'lexical_score': round(lexical_score, 6),
+            'base_score': base_score,
+            'profile_source': profile_resolution['source'],
+            'profile_mode': profile_resolution['resolved_mode'],
+        }
+        preliminary_candidates.append((chunk.id, base_score))
+    preliminary_candidates.sort(key=lambda item: (-item[1], item[0]))
 
-    # 6) 组装返回
+    # 泄漏惩罚只可能降低 base score。按 base score 从高到低计算，当前第 60 名
+    # 的实际分数一旦不低于下一个未检查候选的理论上限，即可精确停止。
+    adjusted_candidates = []
+    for index, (chunk_id, base_score) in enumerate(preliminary_candidates):
+        chunk = chunk_by_id[chunk_id]
+        leakage = content_leakage_metrics(query_text, chunk.content)
+        detail = score_details[chunk_id]
+        total_score = final_retrieval_score(
+            style_score=detail['style_score'],
+            scene_score=detail['scene_score'],
+            semantic_score=detail['semantic_score'],
+            lexical_score=detail['lexical_score'],
+            leakage_penalty=leakage['content_overlap_penalty'],
+        )
+        detail.update({**leakage, 'total_score': total_score})
+        adjusted_candidates.append((chunk_id, total_score))
+        if len(adjusted_candidates) < SEARCH_RERANK_LIMIT:
+            continue
+        adjusted_candidates.sort(key=lambda item: (-item[1], item[0]))
+        cutoff = adjusted_candidates[SEARCH_RERANK_LIMIT - 1][1]
+        next_base = (
+            preliminary_candidates[index + 1][1]
+            if index + 1 < len(preliminary_candidates) else -float('inf')
+        )
+        if cutoff >= next_base:
+            break
+    adjusted_candidates.sort(key=lambda item: (-item[1], item[0]))
+    candidates = adjusted_candidates[:SEARCH_RERANK_LIMIT]
+
+    # 5) MMR 保留多样性；无向量时使用本地内容 n-gram 相似度。
+    similarity_cache = {}
+    id_to_row = {chunk.id: idx for idx, chunk in enumerate(vector_chunks)}
+
+    def candidate_similarity(left_id, right_id):
+        pair = (min(left_id, right_id), max(left_id, right_id))
+        if pair in similarity_cache:
+            return similarity_cache[pair]
+        if left_id == right_id:
+            similarity = 1.0
+        else:
+            left, right = chunk_by_id[left_id], chunk_by_id[right_id]
+            similarity = content_diversity_similarity(left.content, right.content)
+            if matrix is not None and left_id in id_to_row and right_id in id_to_row:
+                embedding_similarity = float(matrix[id_to_row[left_id]] @ matrix[id_to_row[right_id]])
+                similarity = max(similarity, embedding_similarity)
+        similarity_cache[pair] = similarity
+        return similarity
+
+    selected = _mmr_rerank_lazy(
+        candidates, candidate_similarity, lambda_=mmr_lambda, top_k=top_k,
+    )
+
+    # 6) 组装可解释返回
     items = []
-    for chunk_id, fused_score in selected:
+    for chunk_id, total_score in selected:
         chunk = chunk_by_id.get(chunk_id)
         if not chunk:
             continue
         vector_score = vector_scores.get(chunk_id)
         bm25_score = bm25_scores.get(chunk_id)
-        reasons = []
-        if vector_score is not None:
-            reasons.append(f'语义相关 {vector_score:.2f}')
-        if bm25_score is not None:
-            reasons.append('词汇句式命中')
-        if not reasons:
-            reasons.append('综合检索')
+        detail = score_details[chunk_id]
+        try:
+            selected_features = json.loads(chunk.style_features_json or '{}').get('features') or {}
+        except (TypeError, json.JSONDecodeError):
+            selected_features = {}
+        detail['feature_reasons'] = explain_style_feature_matches(
+            selected_features, common_target_profile,
+        )
+        reasons = [
+            f"文风 {detail['style_score']:.2f}",
+            f"节奏 {detail['rhythm_score']:.2f}",
+            f"标点 {detail['punctuation_score']:.2f}",
+            f"功能词 {detail['function_word_score']:.2f}",
+            f"风格签名 {detail['signature_score']:.2f}",
+        ]
+        if detail['content_overlap_penalty'] > 0:
+            reasons.append(f"内容重合扣分 {detail['content_overlap_penalty']:.2f}")
+        debug_reasons = [item['message'] for item in detail['feature_reasons']]
+        effective_query_scene = effective_scene
+        if chunk.scene_type == effective_query_scene:
+            debug_reasons.append(f"✓ {SCENE_LABELS.get(chunk.scene_type, chunk.scene_type)}场景匹配")
+        if (
+            effective_query_scene == 'dialogue'
+            and abs(float(chunk.dialogue_ratio or 0.0) - query_tags['dialogue_ratio']) <= 0.15
+        ):
+            debug_reasons.append('✓ 对话比例匹配')
         items.append({
             **chunk.to_dict(include_content=True),
             'corpus_name': chunk.corpus.name if chunk.corpus else '',
-            'score': round(float(fused_score), 4),
+            'score': round(float(total_score), 4),
+            'style_score': detail['style_score'],
+            'rhythm_score': detail['rhythm_score'],
+            'punctuation_score': detail['punctuation_score'],
+            'function_word_score': detail['function_word_score'],
+            'signature_score': detail['signature_score'],
+            'scene_score': detail['scene_score'],
+            'semantic_score': detail['semantic_score'],
+            'content_overlap_penalty': detail['content_overlap_penalty'],
+            'confidence': detail['confidence'],
+            'ranking_explanation': detail,
+            'debug_reasons': debug_reasons[:5],
             'vector_score': round(vector_score, 4) if vector_score is not None else None,
             'bm25_score': round(bm25_score, 4) if bm25_score is not None else None,
             'reasons': reasons,
+        })
+
+    profile_summaries = []
+    effective_profile_scene = effective_scene
+    for corpus_id in corpus_ids_used:
+        profile = profiles[corpus_id]
+        resolution = resolve_mode_profile(profile, effective_profile_scene)
+        resolved_profile = resolution['profile']
+        corpus = next(
+            (chunk.corpus for chunk in chunks if chunk.corpus_id == corpus_id), None
+        )
+        profile_summaries.append({
+            'corpus_id': corpus_id,
+            'corpus_name': corpus.name if corpus else '',
+            'feature_version': profile.get('feature_version'),
+            'signature_version': (profile.get('style_signature') or {}).get('signature_version'),
+            'sample_count': profile.get('sample_count', 0),
+            'valid_char_count': profile.get('valid_char_count', 0),
+            'confidence': profile.get('confidence', 0.0),
+            'scene_profile': {
+                'requested_mode': effective_profile_scene,
+                'source': resolution['source'],
+                'resolved_mode': resolution['resolved_mode'],
+                'sample_count': resolved_profile.get('sample_count', 0),
+                'valid_char_count': resolved_profile.get('valid_char_count', 0),
+                'confidence': resolved_profile.get('confidence', 0.0),
+            },
         })
 
     meta = {
@@ -603,9 +958,22 @@ def hybrid_search_style(
         'corpus_ids': corpus_ids_used,
         'candidate_count': len(chunks),
         'vector_enabled': bool(vector_ranked),
+        'embedding_fallback_reason': vector_fallback_reason or None,
         'bm25_enabled': bool(bm25_scores),
-        'resolved_scene_type': scene_type or 'auto',
+        'ranking_mode': 'style_first',
+        'ranking_weights': {
+            'style': 0.72, 'scene': 0.12, 'semantic': 0.10,
+            'bm25': 0.06, 'content_leakage_penalty': 0.45,
+        },
+        'resolved_scene_type': requested_scene or 'auto',
+        'query_scene_type': query_tags['scene_type'],
+        'effective_scene_type': effective_scene,
+        'query_tags': query_tags,
+        'profile_summaries': profile_summaries,
         'resolved_pacing': pacing or 'auto',
         'relaxed_scene': relaxed_scene,
+        'cache_hit': False,
     }
-    return items, meta
+    result = (items, meta)
+    _set_cached_search(cache_key, result)
+    return result

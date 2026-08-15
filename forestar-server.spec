@@ -14,6 +14,7 @@ ROOT = os.path.abspath(SPECPATH)
 SERVER_DIR = os.path.join(ROOT, 'server')
 # 让 collect_submodules 能按包名（services/routes）扫描到 server/ 下的模块
 sys.path.insert(0, SERVER_DIR)
+BUNDLE_LOCAL_EMBEDDING = os.environ.get('FORESTAR_BUNDLE_ONNX') == '1'
 
 # 收集项目内部包的全部子模块，避免动态导入遗漏
 hiddenimports = (
@@ -109,7 +110,7 @@ a = Analysis(
         'idna',
         'distro',
         'tiktoken',
-    ],
+    ] + ([] if BUNDLE_LOCAL_EMBEDDING else ['onnxruntime']),
     noarchive=False,
 )
 

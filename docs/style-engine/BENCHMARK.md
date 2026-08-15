@@ -150,3 +150,96 @@ Feature 与样本有效字符数的相关性不应来自公式本身。每千字
 
 Benchmark 结果建议保存在不含私人正文的版本化 JSON/Markdown 报告中。只有评测方案、数据许可、运行环境和原始聚合结果都可追踪时，才能把某项算法标记为已验收。
 
+## 9. 最终 A/B/C/D Benchmark（已实现）
+
+最终 Benchmark 使用“先生成并冻结、再离线评分”的两阶段流程。评分工具不会调用 LLM、Embedding API 或网络，也不会重新实现任何检索算法。
+
+### 9.1 四种候选
+
+- `baseline`：普通提示词，不使用 Style Retrieval，不启用 Strict Style Rewrite。
+- `existing`：升级前旧 Style RAG 的真实历史生成稿。旧算法已被原地升级，若没有保存历史稿，不得用 New 结果冒充。
+- `new`：当前 Style Retrieval 注入参考片段后的生成稿，不启用自动 Style Diff Rewrite。
+- `strict`：当前 Style Retrieval，并在显著 Style Diff 时允许最多一次 Strict Style Rewrite 后的最终稿。
+
+四种方法必须使用相同 `writing_task`，并尽量固定 provider、model、思考模式、输出长度要求和其他生成设置。模型 API 未必提供完全确定的采样，因此本 Benchmark 的“可重复”指：冻结输入文件后，评分、报告和匿名顺序可重复；不声称重新请求 LLM 会逐字一致。
+
+### 9.2 Manifest
+
+复制 [benchmark-manifest.example.json](benchmark-manifest.example.json) 到私人工作目录，再填写真实路径。`author_profile` 支持两种形式：
+
+```json
+{"author_profile": {"corpus_id": 1}}
+```
+
+以上形式从 Forestar 当前本地数据库读取已建立且未失效的 Profile；也可以指向单独导出的 Profile JSON：
+
+```json
+{"author_profile": "D:/PrivateBenchmark/author-profile.json"}
+```
+
+每个任务必须包含：
+
+- 唯一 `id`；
+- 四种方法共同使用的 `writing_task`；
+- 目标 `scene_type`；
+- 供人工盲测阅读的 `reference_author_samples`；
+- A/B/C/D 候选正文；
+- Existing/New/Strict 当次实际注入的 reference chunk 文件。Baseline 的注入列表必须为空。
+
+实际注入片段应从当次保存的组装 Prompt 或检索快照中提取，不能用后来重新检索的片段替换，否则 Content Leakage 不再对应真实生成过程。正文和 reference 支持 TXT/DOCX。
+
+### 9.3 运行命令
+
+```powershell
+.\.venv\Scripts\python scripts\benchmark_style_engine.py "D:\PrivateBenchmark\manifest.json"
+```
+
+可指定输出目录：
+
+```powershell
+.\.venv\Scripts\python scripts\benchmark_style_engine.py `
+  "D:\PrivateBenchmark\manifest.json" `
+  --output "D:\PrivateBenchmark\report"
+```
+
+默认输出到项目中已被 Git 忽略的 `style-benchmark-reports/`。私人 manifest、正文、reference、报告和盲测包不应加入 Git。
+
+### 9.4 自动指标口径
+
+工具使用当前冻结实现计算：
+
+- `style_distance = 1 - style_score`；
+- `rhythm_distance = 1 - rhythm_score`；
+- `punctuation_distance = 1 - punctuation_score`；
+- `function_word_distance = 1 - function_word_score`；
+- `scene_compatibility`：候选本地规则场景与任务目标场景的现有兼容分；
+- `content_leakage`：候选与所有实际注入片段中最大的现有 Leakage Penalty。
+
+同时分别报告：
+
+- 最大字符 8-gram containment；
+- 最大关键词重合；
+- 最大连续公共字符串长度；
+- 产生最高综合重合的匿名 reference ID。
+
+距离和 Leakage 越低越好，Scene compatibility 越高越好。指标可能受文本长度、体裁、场景规则和 Profile confidence 影响，不能单独证明“更像作者”或“文学质量更高”。
+
+### 9.5 输出
+
+- `summary.json`：版本、输入内容哈希和四种方案的聚合均值；
+- `task_scores.csv`：每个任务、每种方案的完整指标；
+- `report.md`：便于阅读的聚合报告和限制声明；
+- `blind-test/<task-id>/`：参考样本、匿名 Candidate A/B/C/D 和提问说明；
+- `blind-test-admin-key.json`：A/B/C/D 与真实方法的映射，只交给组织者，不交给评审者。
+
+匿名顺序由 `blind_seed + task_id` 稳定生成。同一 manifest、Profile 和正文重复运行会得到相同评分、候选顺序与管理员映射。
+
+### 9.6 人工盲测
+
+评审者只接收 `blind-test/` 子目录，不接收管理员映射。核心问题是：
+
+1. 哪篇在语言习惯上最像参考作者？
+2. 哪篇最像在复述或复制参考内容？
+3. 哪篇最自然？
+
+允许平局并要求简短理由。任务数或评审人数较少时只报告探索性结果；自动指标与人工偏好不一致时，应保留两者，而不是用自动分数覆盖人工判断。

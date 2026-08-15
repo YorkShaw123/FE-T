@@ -42,6 +42,7 @@ safeBind('#btn-generate', 'click', async () => {
     }
 
     const deaiEnabled = $('#deai-enabled').checked;
+    const strictStyleRewriteEnabled = $('#strict-style-rewrite-enabled')?.checked || false;
 
     try {
         const previewData = await fetchPromptPreview();
@@ -76,9 +77,11 @@ safeBind('#btn-generate', 'click', async () => {
     $('#result-section').style.display = '';
     $('#first-content').innerHTML = '';
     $('#deai-content').innerHTML = '';
+    $('#style-rewrite-content').innerHTML = '';
     $('#reasoning-section').style.display = 'none';
     $('#reasoning-content').textContent = '';
     $('#deai-content-section').style.display = 'none';
+    $('#style-rewrite-content-section').style.display = 'none';
     $('#first-content-section').querySelector('.section-header h4').textContent = '第一版（生成中...）';
 
     // 显示加载指示器
@@ -92,7 +95,8 @@ safeBind('#btn-generate', 'click', async () => {
 
     try {
         await generateStream(
-            apiKey, templateIds, deaiEnabled, state.generationController.signal
+            apiKey, templateIds, deaiEnabled, strictStyleRewriteEnabled,
+            state.generationController.signal
         );
         state.resultReady = true;
         $('#btn-open-result-editor').disabled = false;
@@ -124,7 +128,7 @@ safeBind('#btn-stop-generate', 'click', () => {
 });
 
 /** 流式生成：通过 SSE 逐块接收并渲染第一版/思考链/去AI味内容 */
-async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
+async function generateStream(apiKey, templateIds, deaiEnabled, strictStyleRewriteEnabled, signal) {
     // 使用 fetch + ReadableStream 读取 SSE 流
     const response = await fetch('/api/generation/generate-stream', {
         method: 'POST',
@@ -138,6 +142,7 @@ async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
             reasoning_effort: 'high',
             deai_enabled: deaiEnabled,
             deai_prompt: $('#deai-prompt').value,
+            strict_style_rewrite_enabled: strictStyleRewriteEnabled,
             title: $('#article-title').value || '未命名',
             previous_article: $('#previous-article').value,
             variable_values: getWorkspaceVariableValues(),
@@ -146,9 +151,9 @@ async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
             structured_prompt_enabled: $('#structured-prompt-enabled').checked,
             style_mode: getWorkspaceStyleMode(),
             scene_type: 'auto',
-            // Style RAG：已勾选的语料库 + Embedding 密钥（缺省回退顶部 LLM 密钥）
+            // Style RAG：远程索引仅使用独立 Embedding 密钥；本地/纯 Style 无需密钥。
             style_corpus_ids: getSelectedCorpusIds(),
-            embedding_api_key: getEmbeddingApiKey() || apiKey,
+            embedding_api_key: getEmbeddingApiKey(),
         }),
     });
 
@@ -165,13 +170,19 @@ async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
 
     let firstContent = '';
     let deaiContent = '';
+    let styleRewriteContent = '';
     let reasoningContent = '';
     let currentRecordId = null;
     let isDeaiPhase = false;
+    let isStyleRewritePhase = false;
 
     // 状态更新
     function updateStatus() {
-        if (isDeaiPhase) {
+        if (isStyleRewritePhase) {
+            $('#loading-overlay').style.display = '';
+            $('#loading-text').textContent = '正在执行严格文风重写...';
+            $('#style-rewrite-content-section').style.display = '';
+        } else if (isDeaiPhase) {
             $('#loading-overlay').style.display = '';
             $('#loading-text').textContent = '正在去AI味处理...';
             $('#deai-content-section').style.display = '';
@@ -204,7 +215,10 @@ async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
             const data = eventData.data;
 
             if (type === 'content') {
-                if (isDeaiPhase) {
+                if (isStyleRewritePhase) {
+                    styleRewriteContent += data;
+                    $('#style-rewrite-content').innerHTML = formatArticle(styleRewriteContent);
+                } else if (isDeaiPhase) {
                     deaiContent += data;
                     $('#deai-content').innerHTML = formatArticle(deaiContent);
                 } else {
@@ -223,11 +237,21 @@ async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
                 updateStatus();
                 $('#deai-content-section').style.display = '';
                 $('#deai-content-section').querySelector('.section-header h4').textContent = '✅ 去AI味版';
+            } else if (type === 'status' && data === 'style_rewrite_start') {
+                isDeaiPhase = false;
+                isStyleRewritePhase = true;
+                updateStatus();
+            } else if (type === 'status' && data === 'style_rewrite_done') {
+                isStyleRewritePhase = false;
+                updateStatus();
+                $('#style-rewrite-content-section').style.display = '';
+                $('#style-rewrite-content-section').querySelector('.section-header h4').textContent = '✅ 严格文风终稿';
             } else if (type === 'complete') {
                 currentRecordId = eventData.record_id;
                 reasoningContent = eventData.reasoning_content || reasoningContent;
                 firstContent = eventData.first_content || firstContent;
                 deaiContent = eventData.deai_content || deaiContent;
+                styleRewriteContent = eventData.style_rewrite_content || styleRewriteContent;
             } else if (type === 'error') {
                 throw new Error(data);
             }
@@ -249,8 +273,15 @@ async function generateStream(apiKey, templateIds, deaiEnabled, signal) {
         $('#deai-content').innerHTML = formatArticle(deaiContent);
     }
 
+    if (styleRewriteContent) {
+        $('#style-rewrite-content-section').style.display = '';
+        $('#style-rewrite-content-section').querySelector('.section-header h4').textContent = '✅ 严格文风终稿';
+        $('#style-rewrite-content').innerHTML = formatArticle(styleRewriteContent);
+    }
+
     state.currentRecordId = currentRecordId;
-    toast('文章生成成功！' + (deaiContent ? '已应用去AI味处理。' : ''));
+    toast('文章生成成功！' + (styleRewriteContent
+        ? '已应用严格文风重写。' : (deaiContent ? '已应用去AI味处理。' : '')));
 }
 
 /** 渲染同步生成结果（同步接口保留） */
@@ -277,6 +308,13 @@ function displayResult(response) {
         $('#deai-content-section').style.display = 'none';
     }
 
+    if (response.style_rewrite_content) {
+        $('#style-rewrite-content-section').style.display = '';
+        $('#style-rewrite-content').innerHTML = formatArticle(response.style_rewrite_content);
+    } else {
+        $('#style-rewrite-content-section').style.display = 'none';
+    }
+
     // 保存记录ID
     state.currentRecordId = response.record?.id;
     state.resultReady = true;
@@ -289,8 +327,9 @@ function displayResult(response) {
 // ==================== 复制与下载 ====================
 
 safeBind('#btn-copy-result', 'click', () => {
+    const styleRewriteContent = getArticleText($('#style-rewrite-content'));
     const deaiContent = getArticleText($('#deai-content'));
-    const content = deaiContent || getArticleText($('#first-content'));
+    const content = styleRewriteContent || deaiContent || getArticleText($('#first-content'));
 
     navigator.clipboard.writeText(content).then(() => {
         toast('已复制到剪贴板');
@@ -300,8 +339,9 @@ safeBind('#btn-copy-result', 'click', () => {
 });
 
 safeBind('#btn-download-result', 'click', () => {
+    const styleRewriteContent = getArticleText($('#style-rewrite-content'));
     const deaiContent = getArticleText($('#deai-content'));
-    const content = deaiContent || getArticleText($('#first-content'));
+    const content = styleRewriteContent || deaiContent || getArticleText($('#first-content'));
     const title = $('#article-title').value || '未命名';
 
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });

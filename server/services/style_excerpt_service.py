@@ -254,18 +254,24 @@ def select_style_excerpts(profile_entries, scene_type='auto', query_text='', sty
         template, profile, card = profile_map[excerpt.style_profile_id]
         score, reasons = 0.0, []
         if excerpt.is_pinned:
-            score += 100; reasons.append('人工置顶')
+            score += 100
+            reasons.append('人工置顶')
         if excerpt.scene_type == target_scene:
-            score += 35; reasons.append('场景类型一致')
+            score += 35
+            reasons.append('场景类型一致')
         elif excerpt.scene_type == 'mixed':
-            score += 8; reasons.append('综合场景可迁移')
+            score += 8
+            reasons.append('综合场景可迁移')
         card_pov = str(card.get('narration', {}).get('person', '')).strip()
         if card_pov and excerpt.pov and (card_pov in excerpt.pov or excerpt.pov in card_pov):
-            score += 20; reasons.append('叙述视角一致')
+            score += 20
+            reasons.append('叙述视角一致')
         if profile.is_primary:
-            score += 20; reasons.append('主风格模板')
+            score += 20
+            reasons.append('主风格模板')
         if excerpt.pace == target_pace:
-            score += 10; reasons.append('节奏接近')
+            score += 10
+            reasons.append('节奏接近')
         ratio_score = max(0, 10 - abs(excerpt.dialogue_ratio - target_dialogue) * 25)
         score += ratio_score
         excerpt_data = excerpt.to_dict()
@@ -273,7 +279,8 @@ def select_style_excerpts(profile_entries, scene_type='auto', query_text='', sty
         overlap = query_tokens & _text_tokens(' '.join(tags) + ' ' + excerpt.emotion)
         if overlap:
             bonus = min(20, len(overlap) * 4)
-            score += bonus; reasons.append(f'语义标签命中 {len(overlap)} 项')
+            score += bonus
+            reasons.append(f'语义标签命中 {len(overlap)} 项')
         candidates.append((score, excerpt, reasons, template.name))
     candidates.sort(key=lambda item: (-item[0], item[1].source_order))
 

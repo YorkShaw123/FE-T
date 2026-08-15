@@ -10,6 +10,7 @@ __pycache__/
 venv/
 env/
 .venv/
+/.embedding-build-venv/
 
 # IDE
 .vscode/
@@ -44,6 +45,9 @@ data/
 # 测试/调试残留目录（浏览器测试资料、性能测试数据库等）
 .edge-check*/
 _perf_test/
+/style-analysis-reports/
+/style-benchmark-reports/
+/local-model-build/
 .flask-*.log
 
 # 生成的图标源图（可重新生成）

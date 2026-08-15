@@ -28,7 +28,7 @@ export const DRAFT_KEY = 'forestar_workspace_draft_v2';
 /** 需要随工作台草稿持久化的表单字段 */
 export const DRAFT_FIELDS = [
     'article-title', 'previous-article',
-    'deai-prompt', 'deai-enabled', 'provider-select', 'model-select',
+    'deai-prompt', 'deai-enabled', 'strict-style-rewrite-enabled', 'provider-select', 'model-select',
     'thinking-enabled',
     'structured-prompt-enabled',
 ];

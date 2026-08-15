@@ -39,7 +39,8 @@ def init_db(app):
     with app.app_context():
         # 导入所有模型，确保表被创建
         from database.models import (  # noqa: F401
-            PromptTemplate, GenerationRecord, ProjectSetting, StyleProfile, StyleExcerpt,
+            AuthorStyleProfile, GenerationRecord, ProjectSetting, PromptTemplate,
+            StyleExcerpt, StyleProfile,
         )
         db.create_all()
         apply_sqlite_migrations(db)

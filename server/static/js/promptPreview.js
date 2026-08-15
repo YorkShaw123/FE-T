@@ -56,6 +56,7 @@ export function buildPromptPreviewPayload() {
         model: $('#model-select').value,
         deai_enabled: $('#deai-enabled').checked,
         deai_prompt: $('#deai-prompt').value,
+        strict_style_rewrite_enabled: $('#strict-style-rewrite-enabled')?.checked || false,
         thinking_enabled: $('#thinking-enabled').checked,
         reasoning_effort: 'high',
         structured_prompt_enabled: $('#structured-prompt-enabled').checked,
@@ -72,7 +73,7 @@ export function renderTokenBudget(budget) {
     const panel = $('#token-budget-panel');
     if (!panel || !budget) return;
     const labels = { safe: '预算充足', warning: '接近上限', over: '已超限' };
-    const phaseLabels = { primary: '正文生成', deai: '去 AI 味' };
+    const phaseLabels = { primary: '正文生成', deai: '去 AI 味', style_rewrite: '严格文风重写' };
     const rows = Object.entries(budget.phases).map(([key, phase]) => {
         const percent = Math.max(0, Math.round(phase.usage_ratio * 100));
         const width = Math.min(100, percent);

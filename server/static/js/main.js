@@ -18,7 +18,7 @@ import { loadHistoryList } from './history.js';
 import './promptPreview.js';
 import './generation.js';
 import './resultEditor.js';
-import './styleCorpora.js';
+import { loadCorporaList } from './styleCorpora.js';
 
 // ==================== 主题切换 ====================
 
@@ -49,6 +49,7 @@ function initTabs() {
             $(`#tab-${tabName}`).classList.add('active');
 
             if (tabName === 'templates') loadTemplatesList();
+            if (tabName === 'styles') loadCorporaList();
             if (tabName === 'history') loadHistoryList();
             if (tabName === 'workspace') loadWorkspaceTemplates();
         });
