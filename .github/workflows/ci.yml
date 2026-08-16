@@ -37,5 +37,11 @@ jobs:
         shell: pwsh
         run: Get-ChildItem server/static/js/*.js | ForEach-Object { node --check $_.FullName }
 
+      - name: Prepare Tauri sidecar placeholder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+          New-Item -ItemType File -Force src-tauri/binaries/flora-server-x86_64-pc-windows-msvc.exe | Out-Null
+
       - name: Check Rust
         run: cargo check --manifest-path src-tauri/Cargo.toml --locked
