@@ -1,15 +1,15 @@
 /**
- * Forestar Editor - 应用入口
+ * Flora Editor - 应用入口
  * 负责全局 UI 初始化（主题、导航、密钥、模型选择器、工作台草稿）与应用启动。
  */
 import { $, $$, api } from './utils.js';
 import { state, DRAFT_KEY, DRAFT_FIELDS } from './state.js';
 import { initZoom } from './zoom.js';
+import { initWorkflowCanvas } from './workflowCanvas.js';
+import { initOnboarding } from './onboarding.js';
 import {
-    getWorkspaceStyleStrength,
     getWorkspaceStyleMode,
     updateWorkspaceStyleModeHelp,
-    updateWorkspaceStyleStrengthHelp,
 } from './styleSettings.js';
 import { loadWorkspaceTemplates } from './templatePanel.js';
 import { loadTemplatesList } from './templateManager.js';
@@ -30,7 +30,7 @@ function initTheme() {
         state.theme = state.theme === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', state.theme);
         $('#theme-toggle').textContent = state.theme === 'dark' ? '🌙' : '☀️';
-        localStorage.setItem('forestar_theme', state.theme);
+        localStorage.setItem('flora_theme', state.theme);
     });
 }
 
@@ -127,7 +127,6 @@ function saveWorkspaceDraft() {
         const el = $(`#${id}`);
         if (el) draft[id] = el.type === 'checkbox' ? el.checked : el.value;
     });
-    draft.styleStrength = getWorkspaceStyleStrength();
     draft.styleMode = getWorkspaceStyleMode();
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
 }
@@ -142,20 +141,13 @@ function restoreWorkspaceDraft() {
             if (el.type === 'checkbox') el.checked = Boolean(draft[id]);
             else el.value = draft[id];
         });
-        const strength = draft.styleStrength || 'light';
-        const strengthInput = $(`input[name="workspace-style-strength"][value="${strength}"]`);
-        if (strengthInput) strengthInput.checked = true;
         const styleMode = draft.styleMode || 'legacy';
         // 'off' 模式已移除，历史草稿中若残留则回退默认"原文拼接"
         const modeInput = $(`input[name="workspace-style-mode"][value="${styleMode}"]`)
             || $('input[name="workspace-style-mode"]:checked')
             || $('input[name="workspace-style-mode"]');
         if (modeInput) modeInput.checked = true;
-        updateWorkspaceStyleStrengthHelp();
         updateWorkspaceStyleModeHelp();
-        $$('input[name="workspace-style-strength"]').forEach(input => {
-            input.addEventListener('change', updateWorkspaceStyleStrengthHelp);
-        });
         $$('input[name="workspace-style-mode"]').forEach(input => {
             input.addEventListener('change', () => {
                 updateWorkspaceStyleModeHelp();
@@ -175,6 +167,8 @@ function restoreWorkspaceDraft() {
 
 function init() {
     initZoom();
+    initWorkflowCanvas();
+    initOnboarding();
     initTheme();
     initTabs();
     initApiKey();

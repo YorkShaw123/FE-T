@@ -262,7 +262,7 @@ def test_debug_feature_reasons_are_limited_ranked_and_explainable():
 
 
 def test_missing_local_model_degrades_to_style_only(monkeypatch, tmp_path):
-    monkeypatch.setenv('FORESTAR_MODELS_DIR', str(tmp_path / 'missing-models'))
+    monkeypatch.setenv('FLORA_MODELS_DIR', str(tmp_path / 'missing-models'))
     app = create_app('production')
     with app.app_context():
         corpus = StyleCorpus(name='missing-local-model')

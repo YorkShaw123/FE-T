@@ -18,13 +18,13 @@ VSVersionInfo(
                 StringTable(
                     u'080404b0',
                     [
-                        StringStruct(u'CompanyName', u'Forestar'),
-                        StringStruct(u'FileDescription', u'Forestar Editor 后端服务'),
+                        StringStruct(u'CompanyName', u'Flora'),
+                        StringStruct(u'FileDescription', u'Flora Editor 后端服务'),
                         StringStruct(u'FileVersion', u'1.0.0'),
-                        StringStruct(u'InternalName', u'forestar-server'),
+                        StringStruct(u'InternalName', u'flora-server'),
                         StringStruct(u'LegalCopyright', u'Copyright (c) 2026 肖嘉琛'),
-                        StringStruct(u'OriginalFilename', u'forestar-server.exe'),
-                        StringStruct(u'ProductName', u'Forestar Editor'),
+                        StringStruct(u'OriginalFilename', u'flora-server.exe'),
+                        StringStruct(u'ProductName', u'Flora Editor'),
                         StringStruct(u'ProductVersion', u'1.0.0')
                     ]
                 )

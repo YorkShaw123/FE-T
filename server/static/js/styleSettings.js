@@ -1,13 +1,8 @@
 /**
- * Forestar Editor - 工作台风格设置
+ * Flora Editor - 工作台风格设置
  * 负责风格模式（legacy/smart/off）与风格强度（light/medium/strict）的读取与提示更新。
  */
 import { $ } from './utils.js';
-
-/** 读取当前风格强度 */
-export function getWorkspaceStyleStrength() {
-    return $('input[name="workspace-style-strength"]:checked')?.value || 'light';
-}
 
 /** 读取当前风格模式 */
 export function getWorkspaceStyleMode() {
@@ -35,16 +30,4 @@ export function updateWorkspaceStyleModeHelp() {
     // Style RAG 语料库控制区仅在智能风格链模式下展示
     const ragControl = $('#style-rag-control');
     if (ragControl) ragControl.style.display = mode === 'smart' ? '' : 'none';
-}
-
-/** 根据风格强度更新说明文案 */
-export function updateWorkspaceStyleStrengthHelp() {
-    const help = $('#style-strength-help');
-    if (!help) return;
-    const descriptions = {
-        light: '保持模板原有位置，不额外增加风格约束。',
-        medium: '风格模板将移至前置文章之后，并要求正文明显贴近参考风格。',
-        strict: '风格模板将移至前置文章之后，并作为本次写作的优先执行标准。',
-    };
-    help.textContent = descriptions[getWorkspaceStyleStrength()];
 }

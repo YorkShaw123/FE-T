@@ -255,7 +255,7 @@ def run_benchmark(manifest_path: Path, output_dir: Path | None = None) -> Path:
         raise BenchmarkError(f"无法读取 manifest：{manifest_path}") from exc
     base = manifest_path.resolve().parent
     benchmark_id = str(manifest.get("benchmark_id") or manifest_path.stem)
-    seed = str(manifest.get("blind_seed") or "forestar-style-benchmark-v1")
+    seed = str(manifest.get("blind_seed") or "flora-style-benchmark-v1")
     author_profile, profile_bytes = _load_profile_spec(manifest.get("author_profile"), base)
     tasks = manifest.get("tasks")
     if not isinstance(tasks, list) or not tasks:

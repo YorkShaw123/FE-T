@@ -171,7 +171,7 @@ Benchmark 结果建议保存在不含私人正文的版本化 JSON/Markdown 报�
 {"author_profile": {"corpus_id": 1}}
 ```
 
-以上形式从 Forestar 当前本地数据库读取已建立且未失效的 Profile；也可以指向单独导出的 Profile JSON：
+以上形式从 Flora 当前本地数据库读取已建立且未失效的 Profile；也可以指向单独导出的 Profile JSON：
 
 ```json
 {"author_profile": "D:/PrivateBenchmark/author-profile.json"}

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forestar Editor - AI文字创作助手</title>
+    <title>Flora Editor - AI文字创作助手</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -13,7 +13,7 @@
         <div class="header-left">
             <div class="brand-mark" aria-hidden="true"><span></span><i></i></div>
             <div class="brand-copy">
-                <h1 class="logo">Forestar <span>Editor</span></h1>
+                <h1 class="logo">Flora <span>Editor</span></h1>
                 <span class="subtitle">智能文字创作工作台</span>
             </div>
         </div>
@@ -75,36 +75,44 @@
                         <!-- 动态加载模板列表 -->
                     </div>
                     <div id="workspace-variables-section" class="workspace-variables-section" hidden>
-                        <div class="workspace-variables-heading">
-                            <strong>模板变量</strong>
-                            <small>仅保存在当前设备，不包含 API 密钥</small>
-                        </div>
-                        <div id="workspace-variables-list" class="workspace-variables-list"></div>
+                        <button id="btn-open-workspace-variables" class="btn btn-outline workspace-variables-button"
+                            type="button">
+                            <span>填写模板变量</span>
+                            <small id="workspace-variable-count"></small>
+                        </button>
                     </div>
                 </aside>
 
                 <!-- 右侧：生成面板 -->
                 <div class="panel panel-right">
-                    <div class="panel-right-inner">
-                        <!-- 左列：配置区域 -->
-                        <div class="config-column">
+                    <div class="panel-right-inner generation-flow">
+                        <svg id="workflow-connections" class="workflow-connections" aria-hidden="true"></svg>
+                        <div class="generation-flow-header">
+                            <div>
+                                <span class="flow-eyebrow">ARTICLE PIPELINE</span>
+                                <h2>文章生成链路</h2>
+                                <p>从模板组装到最终成稿，按执行顺序检查每一步。</p>
+                            </div>
+                            <button id="btn-open-onboarding" class="btn btn-outline" type="button">帮助</button>
+                        </div>
                             <!-- 提示词编排模式 -->
-                            <div class="panel-section prompt-mode-section">
+                            <div class="panel-section prompt-mode-section flow-node" data-step="1">
+                                <div class="flow-node-label"><span>01</span><div><strong>提示词编排</strong><small>模板与变量进入生成链</small></div></div>
                                 <div class="section-header">
                                     <div>
                                         <h3>结构化消息编排</h3>
-                                        <p class="section-description">将系统规则、任务、素材、范例和输出要求拆成独立消息</p>
+                                        <p class="section-description">将系统规则、任务、素材等拆分成独立消息</p>
                                     </div>
                                     <label class="switch-label" title="关闭时完整使用原有字符串拼装格式">
                                         <input type="checkbox" id="structured-prompt-enabled">
                                         <span>启用</span>
                                     </label>
                                 </div>
-                                <p class="prompt-mode-help">默认关闭，继续使用原有 system + 单一 user 字符串格式。</p>
                             </div>
 
-                            <!-- 本次生成的风格参考强度 -->
-                            <div class="panel-section style-control-section">
+                            <!-- 本次生成的文风参考 -->
+                            <div class="panel-section style-control-section flow-node" data-step="2">
+                                <div class="flow-node-label"><span>02</span><div><strong>文风参考</strong><small>选择处理方式与本地语料</small></div></div>
                                 <div class="section-header compact-header">
                                     <div>
                                         <h3>风格处理方式</h3>
@@ -131,55 +139,11 @@
                                     <small id="style-rag-empty-hint" class="style-rag-hint">暂无语料库，请前往「文风管理」导入风格文本</small>
                                 </div>
                                 <div class="style-control-divider"></div>
-                                <div class="section-header compact-header">
-                                    <div>
-                                        <h3>风格参考强度</h3>
-                                        <p class="section-description">控制本次生成对“范例文章”模板的模仿程度</p>
-                                    </div>
-                                </div>
-                                <div class="strength-segmented" role="radiogroup" aria-label="风格参考强度">
-                                    <label>
-                                        <input type="radio" name="workspace-style-strength" value="light" checked>
-                                        <span><strong>轻度</strong><small>仅作参考</small></span>
-                                    </label>
-                                    <label>
-                                        <input type="radio" name="workspace-style-strength" value="medium">
-                                        <span><strong>中度</strong><small>明显贴近</small></span>
-                                    </label>
-                                    <label>
-                                        <input type="radio" name="workspace-style-strength" value="strict">
-                                        <span><strong>严格</strong><small>优先遵循</small></span>
-                                    </label>
-                                </div>
-                                <p id="style-strength-help" class="strength-help">保持模板原有位置，不额外增加风格约束。</p>
-                            </div>
-
-                            <!-- 去AI味 -->
-                            <div class="panel-section">
-                                <div class="section-header">
-                                    <h3>去AI味处理</h3>
-                                    <label class="switch-label">
-                                        <input type="checkbox" id="deai-enabled">
-                                        <span>启用</span>
-                                    </label>
-                                </div>
-                                <textarea id="deai-prompt" class="input-textarea" rows="3"
-                                    style="display:none;" placeholder="自定义去AI味提示词..."></textarea>
-                            </div>
-
-                            <div class="panel-section">
-                                <div class="section-header">
-                                    <h3>严格文风重写</h3>
-                                    <label class="switch-label">
-                                        <input type="checkbox" id="strict-style-rewrite-enabled">
-                                        <span>启用</span>
-                                    </label>
-                                </div>
-                                <p class="strength-help">仅在本地检测到明显文风偏差时，最多增加一次 API 重写调用。</p>
                             </div>
 
                             <!-- 前置文章 -->
-                            <div class="panel-section">
+                            <div class="panel-section flow-node" data-step="3">
+                                <div class="flow-node-label"><span>03</span><div><strong>上下文输入</strong><small>补充已有文章，保持内容连续</small></div></div>
                                 <div class="section-header">
                                     <h3>前置文章（可选）</h3>
                                     <span class="hint-text" style="font-size:11px;">超过30000字自动压缩</span>
@@ -194,26 +158,49 @@
                                 <div id="article-file-status" class="file-status" hidden></div>
                             </div>
 
-                            <!-- 生成按钮 -->
-                            <div class="generate-actions">
-                                <input type="text" id="article-title" class="input-text" placeholder="文章标题（可选）" style="flex:1;">
-                                <button id="btn-generate" class="btn btn-primary btn-lg">
-                                    生成文章
-                                </button>
-                                <button id="btn-stop-generate" class="btn btn-stop btn-lg" type="button" style="display:none;">
-                                    停止生成
-                                </button>
+                            <div class="panel-section flow-node flow-generation-node" data-step="4">
+                                <div class="flow-node-label"><span>04</span><div><strong>生成初稿</strong><small>调用当前选择的大模型 API</small></div></div>
+                                <div class="generate-actions">
+                                    <input type="text" id="article-title" class="input-text" placeholder="文章标题（可选）" style="flex:1;">
+                                </div>
+                                <div id="workspace-token-summary" class="workspace-token-summary idle">
+                                    <span>Token 预算</span><strong>等待预检</strong><small>点击生成或提示词预览后显示</small>
+                                </div>
                             </div>
-                        </div>
 
-                        <!-- 右列：生成结果 -->
-                        <div class="result-column">
+                            <!-- 去AI味 -->
+                            <div class="panel-section flow-node" data-step="5">
+                                <div class="flow-node-label"><span>05</span><div><strong>语言自然化</strong><small>可选的第二阶段处理</small></div></div>
+                                <div class="section-header">
+                                    <h3>去AI味处理</h3>
+                                    <label class="switch-label">
+                                        <input type="checkbox" id="deai-enabled">
+                                        <span>启用</span>
+                                    </label>
+                                </div>
+                                <textarea id="deai-prompt" class="input-textarea" rows="3"
+                                    style="display:none;" placeholder="自定义去AI味提示词..."></textarea>
+                            </div>
+
+                            <div class="panel-section flow-node" data-step="6">
+                                <div class="flow-node-label"><span>06</span><div><strong>文风校正</strong><small>本地分析偏差后决定是否重写</small></div></div>
+                                <div class="section-header">
+                                    <h3>严格文风重写</h3>
+                                    <label class="switch-label">
+                                        <input type="checkbox" id="strict-style-rewrite-enabled">
+                                        <span>启用</span>
+                                    </label>
+                                </div>
+                                <p class="strength-help">仅在本地检测到明显文风偏差时，最多增加一次 API 重写调用。</p>
+                            </div>
+
                             <!-- 生成结果区 -->
-                            <div class="panel-section result-section" id="result-section" style="display:none; flex:1;">
+                            <div class="panel-section result-section flow-node flow-result-node" id="result-section" data-step="7">
+                                <div class="flow-node-label"><span>07</span><div><strong>最终成稿</strong><small>查看、编辑或导出生成结果</small></div></div>
                                 <div class="section-header">
                                     <h3>生成结果</h3>
                                     <div class="result-actions">
-                                        <button id="btn-open-result-editor" class="btn btn-xs btn-primary">全屏编辑</button>
+                                        <button id="btn-open-result-editor" class="btn btn-xs btn-primary" disabled>全屏编辑</button>
                                         <button id="btn-copy-result" class="btn btn-xs btn-outline">复制</button>
                                         <button id="btn-download-result" class="btn btn-xs btn-outline">下载</button>
                                     </div>
@@ -237,7 +224,7 @@
                                         <h4>第一版（原始）</h4>
                                         <span class="editable-hint">点击“全屏编辑”使用 Markdown 与局部AI</span>
                                     </div>
-                                    <div id="first-content" class="article-content"></div>
+                                    <div id="first-content" class="article-content"><p class="result-placeholder">生成完成后，文章会沿着链路到达这里。</p></div>
                                 </div>
                                 <!-- 去AI味版 -->
                                 <div id="deai-content-section" style="display:none;">
@@ -249,10 +236,29 @@
                                     <div id="style-rewrite-content" class="article-content"></div>
                                 </div>
                             </div>
-
-                        </div>
+                            <div class="flow-generate-launcher canvas-generate-launcher" aria-label="文章生成操作">
+                                <button id="btn-generate" class="btn btn-primary btn-lg">生成文章</button>
+                                <button id="btn-stop-generate" class="btn btn-stop btn-lg" type="button" style="display:none;">停止生成</button>
+                            </div>
                     </div>
                 </div>
+                <div id="workflow-node-backdrop" class="workflow-node-backdrop" hidden></div>
+                <section id="workflow-node-modal" class="workflow-node-modal" role="dialog" aria-modal="true"
+                    aria-labelledby="workflow-node-modal-title" hidden>
+                    <header class="workflow-node-modal-header">
+                        <div>
+                            <span>流程节点说明</span>
+                            <h2 id="workflow-node-modal-title"></h2>
+                            <p id="workflow-node-modal-subtitle"></p>
+                        </div>
+                        <button id="workflow-node-modal-close" class="btn-icon" type="button" aria-label="关闭节点说明">×</button>
+                    </header>
+                    <div class="workflow-node-explanation">
+                        <strong>这个步骤会做什么？</strong>
+                        <p id="workflow-node-modal-explanation"></p>
+                    </div>
+                    <div id="workflow-node-modal-body" class="workflow-node-modal-body"></div>
+                </section>
             </div>
 
             <!-- 可折叠提示词预览侧栏 -->
@@ -468,7 +474,7 @@
                             <p class="style-management-note">模型或运行时不存在时会自动退回 Style/BM25，不影响文风生成。</p>
                         </section>
 
-                        <details id="corpus-search-details" class="style-corpus-details style-management-card" open>
+                        <details id="corpus-search-details" class="style-corpus-details style-management-card">
                             <summary>检索测试与评分调试</summary>
                             <textarea id="corpus-search-query" class="input-textarea" rows="4" placeholder="输入一段写作上下文，检查匹配的风格片段和各项评分"></textarea>
                             <div class="style-corpus-filters">
@@ -623,6 +629,48 @@
             </div>
             <small>首次加载模型会稍慢。关闭程序会中断本次向量化，但不会破坏已有语料。</small>
             <button id="btn-close-embedding-progress" class="btn btn-primary" type="button" hidden>关闭</button>
+        </section>
+    </div>
+
+    <!-- 每次进入应用时展示的分页帮助 -->
+    <div id="onboarding-backdrop" class="onboarding-backdrop" hidden>
+        <section id="onboarding-dialog" class="onboarding-dialog" role="dialog" aria-modal="true"
+            aria-labelledby="onboarding-title">
+            <header class="onboarding-header">
+                <div>
+                    <span>快速认识 Flora Editor</span>
+                    <h2 id="onboarding-title"></h2>
+                </div>
+                <button id="btn-close-onboarding" class="btn-icon" type="button" aria-label="取消并关闭帮助">×</button>
+            </header>
+            <div id="onboarding-page" class="onboarding-page"></div>
+            <footer class="onboarding-footer">
+                <span id="onboarding-progress" aria-live="polite"></span>
+                <div class="onboarding-actions">
+                    <button id="btn-cancel-onboarding" class="btn btn-outline" type="button">取消</button>
+                    <button id="btn-prev-onboarding" class="btn btn-outline" type="button">上一页</button>
+                    <button id="btn-next-onboarding" class="btn btn-primary" type="button">下一页</button>
+                </div>
+            </footer>
+        </section>
+    </div>
+
+    <!-- 工作台模板变量填写 -->
+    <div id="workspace-variables-backdrop" class="modal-backdrop workspace-variables-backdrop" hidden>
+        <section class="workspace-variables-modal" role="dialog" aria-modal="true"
+            aria-labelledby="workspace-variables-title">
+            <header class="modal-header">
+                <div>
+                    <h2 id="workspace-variables-title">填写模板变量</h2>
+                    <p>每个变量只填写一次；相同名称会同时用于列出的模板。</p>
+                </div>
+                <button id="btn-close-workspace-variables" class="btn-icon" type="button" aria-label="关闭模板变量">×</button>
+            </header>
+            <div id="workspace-variables-list" class="workspace-variables-list"></div>
+            <footer class="modal-footer">
+                <small>内容仅保存在当前设备，不包含 API 密钥。</small>
+                <button id="btn-finish-workspace-variables" class="btn btn-primary" type="button">完成</button>
+            </footer>
         </section>
     </div>
 

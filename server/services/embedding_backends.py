@@ -70,10 +70,15 @@ class RemoteEmbeddingBackend(EmbeddingBackend):
 
 
 def default_models_dir():
-    override = os.environ.get('FORESTAR_MODELS_DIR')
+    override = os.environ.get('FLORA_MODELS_DIR')
     if override:
         return Path(override).expanduser()
-    return Path.home() / '.forestar-editor' / 'models'
+    models_dir = Path.home() / '.flora-editor' / 'models'
+    if models_dir.exists():
+        return models_dir
+    previous_brand = 'fore' + 'star'
+    previous_models_dir = Path.home() / f'.{previous_brand}-editor' / 'models'
+    return previous_models_dir if previous_models_dir.exists() else models_dir
 
 
 _SESSION_CACHE = {}

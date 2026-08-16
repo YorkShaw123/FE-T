@@ -1,5 +1,5 @@
 /**
- * Forestar Editor - 生成结果全屏编辑器
+ * Flora Editor - 生成结果全屏编辑器
  * 负责全屏 Markdown 编辑、局部 AI 处理（续写/重写/扩写/润色）、diff 对比与修改版保存。
  */
 import { $, $$, api, toast, escapeHtml, safeBind, getArticleText } from './utils.js';

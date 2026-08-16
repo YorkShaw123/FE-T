@@ -1,5 +1,5 @@
 /**
- * Forestar Editor - 界面缩放
+ * Flora Editor - 界面缩放
  * 通过 CSS zoom 属性控制整个界面的显示比例（与浏览器原生缩放的实现方式一致）。
  * 提供工具栏按钮、快捷键（Ctrl/⌘ + ±/0）与 Ctrl+滚轮三种调节方式，
  * 缩放比例持久化到 localStorage，下次打开自动恢复。
@@ -10,7 +10,7 @@ import { $ } from './utils.js';
 const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.1;
-const ZOOM_KEY = 'forestar_zoom';
+const ZOOM_KEY = 'flora_zoom';
 
 /** 将值约束在缩放范围内 */
 function clamp(value) {
@@ -29,7 +29,13 @@ let currentZoom = loadZoom();
 /** 应用缩放比例：更新 body.zoom、控件文字并持久化 */
 function applyZoom(zoom) {
     currentZoom = clamp(zoom);
+    document.documentElement.style.setProperty('--ui-zoom', String(currentZoom));
+    document.documentElement.style.setProperty('--ui-zoom-inverse', String(1 / currentZoom));
     document.body.style.zoom = String(currentZoom);
+    // CSS media queries do not react to the CSS `zoom` property. Expose the
+    // enlarged state so the header can switch to two rows before controls overlap.
+    document.documentElement.toggleAttribute('data-ui-enlarged', currentZoom >= 1.2);
+    window.dispatchEvent(new CustomEvent('flora:zoom', { detail: { zoom: currentZoom } }));
     const level = $('#zoom-reset');
     if (level) level.textContent = `${Math.round(currentZoom * 100)}%`;
     localStorage.setItem(ZOOM_KEY, String(currentZoom));

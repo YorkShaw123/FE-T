@@ -60,7 +60,7 @@ class LLMClient:
             'Accept-Encoding': 'identity',
         }
         if self.provider == 'gemini':
-            self.headers['x-goog-api-client'] = 'forestar-editor/1.0'
+            self.headers['x-goog-api-client'] = 'flora-editor/1.0'
 
     @staticmethod
     def validate_model(provider, model_id):

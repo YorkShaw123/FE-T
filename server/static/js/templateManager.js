@@ -1,5 +1,5 @@
 /**
- * Forestar Editor - 模板管理
+ * Flora Editor - 模板管理
  * 负责模板列表、分类筛选、新建/编辑/删除/导入导出与版本历史。
  */
 import { $, $$, api, toast, escapeHtml, safeBind } from './utils.js';
@@ -112,7 +112,7 @@ safeBind('#btn-export-templates', 'click', async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'forestar_templates_export.json';
+        a.download = 'flora_templates_export.json';
         a.click();
         URL.revokeObjectURL(url);
         toast('模板已导出');

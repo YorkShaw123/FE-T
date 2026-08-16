@@ -12,22 +12,22 @@ Set-Location $Root
 Write-Host "[1/2] PyInstaller 打包后端 ..."
 $venvPython = Join-Path $Root ".venv\Scripts\python.exe"
 $pythonExe = if (Test-Path $venvPython) { $venvPython } else { "python" }
-$previousBundleSetting = $env:FORESTAR_BUNDLE_ONNX
+$previousBundleSetting = $env:FLORA_BUNDLE_ONNX
 try {
-    $env:FORESTAR_BUNDLE_ONNX = if ($BundleLocalEmbedding) { "1" } else { "0" }
-    & $pythonExe -m PyInstaller forestar-server.spec --clean --noconfirm
+    $env:FLORA_BUNDLE_ONNX = if ($BundleLocalEmbedding) { "1" } else { "0" }
+    & $pythonExe -m PyInstaller flora-server.spec --clean --noconfirm
 } finally {
-    $env:FORESTAR_BUNDLE_ONNX = $previousBundleSetting
+    $env:FLORA_BUNDLE_ONNX = $previousBundleSetting
 }
 
-$distExe = Join-Path $Root "dist\forestar-server.exe"
+$distExe = Join-Path $Root "dist\flora-server.exe"
 if (-not (Test-Path $distExe)) {
     throw "打包失败：未找到 $distExe"
 }
 
 $binDir = Join-Path $Root "src-tauri\binaries"
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-$targetExe = Join-Path $binDir "forestar-server-$Target.exe"
+$targetExe = Join-Path $binDir "flora-server-$Target.exe"
 Copy-Item $distExe $targetExe -Force
 
 Write-Host "[2/2] 后端已就绪: $targetExe"

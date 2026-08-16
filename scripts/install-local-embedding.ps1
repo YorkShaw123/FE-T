@@ -1,6 +1,6 @@
-# Install the Forestar ONNX runtime and export the official BAAI model.
+﻿# Install the Flora ONNX runtime and export the official BAAI model.
 param(
-    [string]$ModelDir = "$env:USERPROFILE\.forestar-editor\models\bge-small-zh-v1.5",
+    [string]$ModelDir = "$env:USERPROFILE\.flora-editor\models\bge-small-zh-v1.5",
     [switch]$Force,
     [switch]$KeepBuildEnvironment
 )

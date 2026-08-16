@@ -1,20 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38">
-  <style>
-    .tile { fill: #10201a; }
-    .tree { fill: none; stroke: #149b78; }
-    .trunk { fill: #149b78; }
-
-    @media (prefers-color-scheme: dark) {
-      .tile { fill: #edf5f1; }
-      .tree { stroke: #32c99d; }
-      .trunk { fill: #32c99d; }
-    }
-  </style>
-  <rect class="tile" width="38" height="38" rx="12"/>
-  <g class="tree" stroke-width="1.5">
-    <path d="M8 30.3c5.8-4.1 13.2-5 22-2.9"/>
-    <path d="M12 24.3c4.8-3.4 10.8-4.1 18-2.4"/>
-    <path d="M17 18.2c3.5-2.4 7.8-2.9 13-1.7"/>
+  <!-- 与默认暗色界面顶栏 .brand-mark 的最终渲染保持一致。 -->
+  <rect width="38" height="38" rx="12" fill="#edf5f1"/>
+  <g fill="none" stroke="#32c99d" stroke-width="1.5">
+    <path d="M8 27C8 24.7909 12.9249 23 19 23C25.0751 23 30 24.7909 30 27" transform="rotate(-8 19 27)"/>
+    <path d="M12 21C12 18.7909 16.0294 17 21 17C25.9706 17 30 18.7909 30 21" transform="rotate(-8 21 21)"/>
+    <path d="M17 15C17 12.7909 19.9101 11 23.5 11C27.0899 11 30 12.7909 30 15" transform="rotate(-8 23.5 15)"/>
   </g>
-  <path class="trunk" d="M17.8 31.7 21 8.5l2 .3-3.2 23.1z"/>
+  <rect x="18" y="9" width="2" height="23" fill="#32c99d" transform="rotate(8 19 20.5)"/>
 </svg>

@@ -1,63 +1,149 @@
 # -*- coding: utf-8 -*-
-"""生成应用图标源图（1024x1024 PNG），供 `npx tauri icon` 生成全套图标。
+"""从网页顶栏 ``.brand-mark`` 的 CSS 几何生成 Windows 图标。
 
-图形与 Web 端 favicon.svg 保持一致：深色圆角底 + 青绿色线描的三层树。
-用法：python scripts/generate-icon.py
-产物：assets/app-icon.png
+网页组件是唯一视觉基准。脚本先生成唯一 canonical RGBA PNG，再由该 PNG
+缩放出所有 Windows 尺寸；不会读取或修补任何旧 PNG/ICO。
 """
-import os
+from __future__ import annotations
+
+import math
+from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-SIZE = 1024
-VIEWBOX = 38  # favicon.svg 的视口尺寸
-SCALE = SIZE / VIEWBOX
 
-# favicon.svg 配色
-TILE = (16, 32, 26)     # 深色圆角底 #10201a
-TREE = (20, 155, 120)   # 青绿 #149b78
+ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_PATH = ROOT / "assets" / "icon-reference-512.png"
+ICONS_DIR = ROOT / "src-tauri" / "icons"
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'app-icon.png')
+VIEWBOX = 38.0
+CANONICAL_SIZE = 512
+SUPERSAMPLE = 4
 
+# style.css 暗色主题的最终计算颜色：.brand-mark 背景 var(--ink)，图形 var(--jade)
+TILE_COLOR = (237, 245, 241, 255)  # #edf5f1
+MARK_COLOR = (50, 201, 157, 255)  # #32c99d
 
-def cubic(p0, p1, p2, p3, n=160):
-    """把三次贝塞尔曲线采样为点序列（PIL 无内建贝塞尔）"""
-    pts = []
-    for i in range(n + 1):
-        t = i / n
-        mt = 1 - t
-        x = mt ** 3 * p0[0] + 3 * mt ** 2 * t * p1[0] + 3 * mt * t ** 2 * p2[0] + t ** 3 * p3[0]
-        y = mt ** 3 * p0[1] + 3 * mt ** 2 * t * p1[1] + 3 * mt * t ** 2 * p2[1] + t ** 3 * p3[1]
-        pts.append((x * SCALE, y * SCALE))
-    return pts
+ICO_SIZES = tuple((size, size) for size in (16, 32, 48, 64, 128, 256))
 
 
-def main():
-    img = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+def _scale(value: float) -> float:
+    return value * CANONICAL_SIZE * SUPERSAMPLE / VIEWBOX
 
-    # 圆角深色底（rx=12/38，与 favicon 一致）
-    radius = int(12 / VIEWBOX * SIZE)
-    draw.rounded_rectangle([0, 0, SIZE, SIZE], radius=radius, fill=TILE)
 
-    # 三层树冠（线描贝塞尔曲线，stroke-width≈1.5/38*SIZE）
-    line_width = max(2, int(1.5 / VIEWBOX * SIZE))
-    curves = [
-        ((8.0, 30.3), (13.8, 26.2), (21.2, 25.3), (30.0, 27.4)),
-        ((12.0, 24.3), (16.8, 20.9), (22.8, 20.2), (30.0, 21.9)),
-        ((17.0, 18.2), (20.5, 15.8), (24.8, 15.3), (30.0, 16.5)),
+def _rotate(
+    point: tuple[float, float],
+    center: tuple[float, float],
+    degrees: float,
+) -> tuple[float, float]:
+    radians = math.radians(degrees)
+    cosine = math.cos(radians)
+    sine = math.sin(radians)
+    x, y = point
+    cx, cy = center
+    dx, dy = x - cx, y - cy
+    return (
+        cx + dx * cosine - dy * sine,
+        cy + dx * sine + dy * cosine,
+    )
+
+
+def _draw_crown(
+    image: Image.Image,
+    bounds: tuple[float, float, float, float],
+    stroke_width: int,
+) -> Image.Image:
+    """栅格化 CSS 圆角顶边，再围绕该盒子中心整体旋转 -8°。"""
+    left, top, right, bottom = bounds
+    center = (_scale((left + right) / 2), _scale((top + bottom) / 2))
+    layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    layer_draw = ImageDraw.Draw(layer)
+    layer_draw.arc(
+        (_scale(left), _scale(top), _scale(right), _scale(bottom)),
+        start=180,
+        end=360,
+        fill=MARK_COLOR,
+        width=stroke_width,
+    )
+    # Pillow 正角度为逆时针，与 CSS rotate(-8deg) 在屏幕坐标中的视觉方向一致。
+    layer = layer.rotate(8.0, resample=Image.Resampling.BICUBIC, center=center)
+    return Image.alpha_composite(image, layer)
+
+
+def _rotated_rectangle(
+    bounds: tuple[float, float, float, float],
+    degrees: float,
+) -> list[tuple[float, float]]:
+    left, top, right, bottom = bounds
+    center = ((left + right) / 2, (top + bottom) / 2)
+    corners = ((left, top), (right, top), (right, bottom), (left, bottom))
+    return [
+        (_scale(x), _scale(y))
+        for x, y in (_rotate(point, center, degrees) for point in corners)
     ]
-    for p0, p1, p2, p3 in curves:
-        draw.line(cubic(p0, p1, p2, p3), fill=TREE, width=line_width, joint='curve')
-
-    # 树干（填充多边形）
-    trunk = [(x * SCALE, y * SCALE) for x, y in [(17.8, 31.7), (21.0, 8.5), (23.0, 8.8), (19.8, 31.9)]]
-    draw.polygon(trunk, fill=TREE)
-
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    img.save(OUT, 'PNG')
-    print(f'图标源图已生成: {OUT}')
 
 
-if __name__ == '__main__':
+def render_canonical() -> Image.Image:
+    canvas_size = CANONICAL_SIZE * SUPERSAMPLE
+    image = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    # .brand-mark: 38 × 38，border-radius: 12px，暗色主题背景 var(--ink)。
+    draw.rounded_rectangle(
+        (0, 0, canvas_size - 1, canvas_size - 1),
+        radius=round(_scale(12)),
+        fill=TILE_COLOR,
+    )
+
+    # ::before、span、::after 的实际 CSS 盒子：right 均为 8px、height 为 8px，
+    # 只绘制 1.5px 顶边，border-radius: 50%，transform: rotate(-8deg)。
+    crown_boxes = (
+        (8.0, 23.0, 30.0, 31.0),
+        (12.0, 17.0, 30.0, 25.0),
+        (17.0, 11.0, 30.0, 19.0),
+    )
+    stroke_width = max(1, round(_scale(1.5)))
+    for bounds in crown_boxes:
+        image = _draw_crown(image, bounds, stroke_width)
+
+    # .brand-mark i: left 18px、bottom 6px、2 × 23px，rotate(8deg)。
+    draw = ImageDraw.Draw(image)
+    draw.polygon(
+        _rotated_rectangle((18.0, 9.0, 20.0, 32.0), 8.0),
+        fill=MARK_COLOR,
+    )
+
+    return image.resize(
+        (CANONICAL_SIZE, CANONICAL_SIZE),
+        Image.Resampling.LANCZOS,
+    )
+
+
+def save_windows_assets(canonical: Image.Image) -> None:
+    ICONS_DIR.mkdir(parents=True, exist_ok=True)
+    CANONICAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    canonical.save(CANONICAL_PATH, "PNG")
+
+    png_targets = {
+        ICONS_DIR / "32x32.png": 32,
+        ICONS_DIR / "64x64.png": 64,
+        ICONS_DIR / "128x128.png": 128,
+        ICONS_DIR / "128x128@2x.png": 256,
+        ICONS_DIR / "icon.png": 512,
+    }
+    for path, size in png_targets.items():
+        canonical.resize((size, size), Image.Resampling.LANCZOS).save(path, "PNG")
+
+    # Pillow 只接受一个视觉输入；sizes 参数从 canonical 自动生成 ICO 帧。
+    canonical.save(ICONS_DIR / "icon.ico", format="ICO", sizes=ICO_SIZES)
+
+
+def main() -> None:
+    canonical = render_canonical()
+    save_windows_assets(canonical)
+    print(f"Canonical PNG: {CANONICAL_PATH}")
+    print(f"Windows ICO: {ICONS_DIR / 'icon.ico'}")
+
+
+if __name__ == "__main__":
     main()

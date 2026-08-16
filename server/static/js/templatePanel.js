@@ -1,11 +1,11 @@
 /**
- * Forestar Editor - 工作台模板面板
+ * Flora Editor - 工作台模板面板
  * 负责工作台左侧模板分类面板的加载、渲染、启停切换，以及前置文章文件导入。
  */
 import { $, $$, api, toast, escapeHtml, safeBind } from './utils.js';
 import { state, categoryConfig } from './state.js';
 
-const VARIABLE_VALUES_KEY = 'forestar_workspace_variable_values_v1';
+const VARIABLE_VALUES_KEY = 'flora_workspace_variable_values_v1';
 
 function loadStoredVariableValues() {
     try {
@@ -28,9 +28,9 @@ export function getWorkspaceVariableValues() {
 function renderWorkspaceVariables(grouped) {
     const section = $('#workspace-variables-section');
     const list = $('#workspace-variables-list');
+    const count = $('#workspace-variable-count');
     if (!section || !list) return;
-    const variables = [];
-    const seen = new Set();
+    const variableTemplates = new Map();
     Object.values(grouped).flat().forEach(template => {
         if (template.is_active === false) return;
         let names = template.variables || [];
@@ -39,23 +39,26 @@ function renderWorkspaceVariables(grouped) {
         }
         (Array.isArray(names) ? names : []).forEach(name => {
             const normalized = String(name || '').trim();
-            if (normalized && !seen.has(normalized)) {
-                seen.add(normalized);
-                variables.push(normalized);
-            }
+            if (!normalized) return;
+            if (!variableTemplates.has(normalized)) variableTemplates.set(normalized, new Set());
+            variableTemplates.get(normalized).add(String(template.name || '未命名模板'));
         });
     });
+    const variables = Array.from(variableTemplates.entries());
     section.hidden = variables.length === 0;
+    if (count) count.textContent = variables.length ? `${variables.length} 项` : '';
     if (!variables.length) {
         list.innerHTML = '';
+        closeWorkspaceVariables();
         return;
     }
     const stored = loadStoredVariableValues();
-    list.innerHTML = variables.map(name => `
+    list.innerHTML = variables.map(([name, templateNames]) => `
         <label class="workspace-variable-item">
-            <span>${escapeHtml(name)}</span>
-            <textarea class="input-textarea" rows="2" data-variable="${escapeHtml(name)}"
-                placeholder="填写 ${escapeHtml(name)}">${escapeHtml(stored[name] || '')}</textarea>
+            <span class="workspace-variable-name">{{${escapeHtml(name)}}}</span>
+            <small class="workspace-variable-source">所在模板：${Array.from(templateNames).map(escapeHtml).join('、')}</small>
+            <input class="input-text" type="text" data-variable="${escapeHtml(name)}"
+                value="${escapeHtml(stored[name] || '')}" placeholder="填写 ${escapeHtml(name)}">
         </label>
     `).join('');
     $$('[data-variable]', list).forEach(input => {
@@ -67,6 +70,34 @@ function renderWorkspaceVariables(grouped) {
     });
 }
 
+function openWorkspaceVariables() {
+    const backdrop = $('#workspace-variables-backdrop');
+    if (!backdrop || $('#workspace-variables-section')?.hidden) return;
+    backdrop.hidden = false;
+    document.body.classList.add('workspace-variables-open');
+    $('#workspace-variables-list [data-variable]')?.focus();
+}
+
+function closeWorkspaceVariables() {
+    const backdrop = $('#workspace-variables-backdrop');
+    if (!backdrop || backdrop.hidden) return;
+    backdrop.hidden = true;
+    document.body.classList.remove('workspace-variables-open');
+    $('#btn-open-workspace-variables')?.focus();
+}
+
+safeBind('#btn-open-workspace-variables', 'click', openWorkspaceVariables);
+safeBind('#btn-close-workspace-variables', 'click', closeWorkspaceVariables);
+safeBind('#btn-finish-workspace-variables', 'click', closeWorkspaceVariables);
+$('#workspace-variables-backdrop')?.addEventListener('click', event => {
+    if (event.target.id === 'workspace-variables-backdrop') closeWorkspaceVariables();
+});
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !$('#workspace-variables-backdrop')?.hidden) {
+        closeWorkspaceVariables();
+    }
+});
+
 /** 加载并渲染工作台模板分组 */
 export async function loadWorkspaceTemplates() {
     const container = $('#template-panel-body');
@@ -75,13 +106,13 @@ export async function loadWorkspaceTemplates() {
     try {
         // 默认加载全部模板（含非活跃），让用户看到所有模板并显式控制开关
         const data = await api('/api/templates/grouped?active_only=false');
-        console.log('[Forestar] 加载模板完成，各组数量:',
+        console.log('[Flora] 加载模板完成，各组数量:',
             Object.fromEntries(Object.entries(data.data).map(([k, v]) => [k, v.length])));
         state.groupedTemplates = data.data;
         renderWorkspaceTemplates(data.data);
         renderWorkspaceVariables(data.data);
     } catch (e) {
-        console.error('[Forestar] 加载模板失败:', e);
+        console.error('[Flora] 加载模板失败:', e);
         container.innerHTML = `<div style="padding:20px;text-align:center;">
             <p style="color:var(--accent-danger);margin-bottom:10px;">⚠️ 加载模板失败: ${escapeHtml(e.message)}</p>
             <button class="btn btn-outline btn-sm" onclick="location.reload()">重新加载</button>
@@ -146,12 +177,17 @@ function renderWorkspaceTemplates(grouped) {
         });
     });
 
-    // 仅对 toggle-dot 绑定切换事件，不绑定整个卡片
-    $$('.toggle-dot', container).forEach(dot => {
-        dot.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const card = dot.closest('.template-card');
-            await toggleTemplateActive(card);
+    // 整张卡片都是启停按钮；圆点继续承担状态指示，扩大可点击区域。
+    $$('.template-card', container).forEach(card => {
+        card.setAttribute('role', 'switch');
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('aria-checked', String(card.classList.contains('active')));
+        card.addEventListener('click', () => toggleTemplateActive(card));
+        card.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                toggleTemplateActive(card);
+            }
         });
     });
 }

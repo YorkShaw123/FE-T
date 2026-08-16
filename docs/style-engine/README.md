@@ -1,4 +1,4 @@
-# Forestar Style Engine 文档入口
+# Flora Style Engine 文档入口
 
 Style Engine 的目标是：在普通 Windows CPU 电脑上，使用纯本地、轻量、可解释的方法分析中文写作风格，并把可执行的风格约束交给现有 Prompt 组装流程。它关注句长、节奏、标点、功能词、基础句法和语言组织习惯，不承担世界知识检索，也不以复制原文内容为目标。
 

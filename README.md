@@ -1,4 +1,4 @@
-# 🌲 Forestar Editor - AI文字创作助手
+# 🌲 Flora Editor - AI文字创作助手
 
 > 一款本地运行的 AI 文字创作工具：通过提示词模板快速组装指令，调用大语言模型 API 生成文章。
 > **产品定位**：桌面端（Tauri + Flask Sidecar）是唯一产品形态；浏览器入口仅用于本机开发测试，固定监听 `127.0.0.1`。
@@ -43,15 +43,15 @@
 ## 目录结构
 
 ```
-Forestar_Editior/
-├── Forestar Editor.exe                            # 桌面端主程序（双击即可运行，主分发形态）
-├── forestar-server.exe    # 桌面端内嵌后端（与主程序同目录分发）
+Flora_Editor/
+├── Flora Editor.exe                            # 桌面端主程序（双击即可运行，主分发形态）
+├── flora-server.exe    # 桌面端内嵌后端（与主程序同目录分发）
 ├── README.md
 ├── LICENSE                                        # MIT 开源许可证
 ├── requirements.txt                               # Python 后端依赖
 ├── package.json                                   # Tauri 构建脚本
-├── forestar-server.spec                           # PyInstaller 打包配置
-├── forestar-version-info.txt                      # 后端 exe 版本信息（降低杀软误报）
+├── flora-server.spec                           # PyInstaller 打包配置
+├── flora-version-info.txt                      # 后端 exe 版本信息（降低杀软误报）
 ├── server/                                        # Flask 本地 Sidecar 后端
 │   ├── app.py                                     # Sidecar / 本机测试入口
 │   ├── config.py                                  # 应用配置
@@ -111,10 +111,10 @@ server/
 
 项目根目录已包含可直接运行的两个文件（由构建脚本生成）：
 
-1. 将 `Forestar Editor.exe` 与 `forestar-server.exe` 放在**同一目录**（保持文件在根目录即可）
-2. 双击 `Forestar Editor.exe`，等待本地服务启动后自动进入工作台
+1. 将 `Flora Editor.exe` 与 `flora-server.exe` 放在**同一目录**（保持文件在根目录即可）
+2. 双击 `Flora Editor.exe`，等待本地服务启动后自动进入工作台
 
-> 桌面版无需安装 Python、Node 或 Rust，用户数据（SQLite）自动持久化在 `%USERPROFILE%\.forestar-editor\data`。
+> 桌面版无需安装 Python、Node 或 Rust，用户数据（SQLite）自动持久化在 `%USERPROFILE%\.flora-editor\data`。
 
 ### 方式二：本机测试模式（仅开发调试）
 
@@ -130,7 +130,7 @@ python -m venv .venv
 .\.venv\Scripts\python server\app.py
 ```
 
-浏览器访问 http://127.0.0.1:5000。仅可用 `FORESTAR_PORT` 覆盖测试端口。
+浏览器访问 http://127.0.0.1:5000。仅可用 `FLORA_PORT` 覆盖测试端口。
 
 ### 开发质量检查
 
@@ -158,7 +158,7 @@ cargo check --manifest-path src-tauri\Cargo.toml --locked
 
 ### 安装本地向量化（开发机）
 
-本地 Embedding 使用 `BAAI/bge-small-zh-v1.5` 的官方权重，在本机一次性导出 ONNX。模型约 95 MB，安装到 `%USERPROFILE%\.forestar-editor\models\bge-small-zh-v1.5`，不会进入 Git、SQLite 或 `forestar-server.exe`；临时 PyTorch/Transformers 导出环境在成功后自动删除。
+本地 Embedding 使用 `BAAI/bge-small-zh-v1.5` 的官方权重，在本机一次性导出 ONNX。模型约 95 MB，安装到 `%USERPROFILE%\.flora-editor\models\bge-small-zh-v1.5`，不会进入 Git、SQLite 或 `flora-server.exe`；临时 PyTorch/Transformers 导出环境在成功后自动删除。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install-local-embedding.ps1
@@ -229,8 +229,9 @@ powershell -ExecutionPolicy Bypass -File scripts\install-local-embedding.ps1
 
 ## 本地数据
 
-- 数据统一存放在 `%USERPROFILE%\.forestar-editor\data\forestar.db`，可用 `FORESTAR_DATA_DIR` 覆盖（仅供开发测试）。
-- 首次运行若检测到旧的 `data\forestar.db`，会复制到统一目录；原文件保留为备份。
+- 数据统一存放在 `%USERPROFILE%\.flora-editor\data\flora.db`，可用 `FLORA_DATA_DIR` 覆盖（仅供开发测试）。
+- 品牌更名前的数据会在首次运行时自动复制到 `%USERPROFILE%\.flora-editor\data\flora.db`；旧数据库仍保留为备份，不会被删除。
+- 本地 Embedding 模型若仍位于旧品牌目录，程序会继续读取，无需重新下载。
 - 桌面版使用随机回环端口，本机测试模式默认使用 `5000`。
 
 ## 打包构建（Windows）
@@ -250,21 +251,21 @@ npm run build:all
 
 | 产物 | 位置 | 说明 |
 |------|------|------|
-| 直接运行版主程序 | 项目根目录 `Forestar Editor.exe` | 与 `forestar-server.exe` 同目录双击运行 |
-| 内嵌后端 | 项目根目录 `forestar-server.exe` | 由 PyInstaller 打包，随主程序分发 |
+| 直接运行版主程序 | 项目根目录 `Flora Editor.exe` | 与 `flora-server.exe` 同目录双击运行 |
+| 内嵌后端 | 项目根目录 `flora-server.exe` | 由 PyInstaller 打包，随主程序分发 |
 | NSIS 安装包 | `src-tauri\target\release\bundle\nsis\` | 面向普通用户的安装程序 |
 
 分步构建：
 
 ```powershell
-# 仅打包后端（生成 src-tauri\binaries\forestar-server-*.exe）
+# 仅打包后端（生成 src-tauri\binaries\flora-server-*.exe）
 npm run build:backend
 
 # 仅构建 Tauri 桌面应用与安装包
 npm run tauri:build
 ```
 
-> 打包说明：后端 exe 关闭了 UPX 压缩（降低杀软误报率）并注入标准 Windows 版本信息（[forestar-version-info.txt](forestar-version-info.txt)）；`build:backend` 的原始产物位于 `dist/forestar-server.exe`。
+> 打包说明：后端 exe 关闭了 UPX 压缩（降低杀软误报率）并注入标准 Windows 版本信息（[flora-version-info.txt](flora-version-info.txt)）；`build:backend` 的原始产物位于 `dist/flora-server.exe`。
 > 默认发行包不包含可选的 ONNX Runtime，避免意外增加体积；纯本地 Style/BM25 检索不受影响。需要制作包含本地语义运行时的专用包时，先安装 `requirements-local-embedding.txt`，再运行 `powershell -ExecutionPolicy Bypass -File scripts\build-backend.ps1 -BundleLocalEmbedding`。模型文件仍需单独放入用户模型目录。
 
 ### 桌面版架构说明
@@ -272,24 +273,24 @@ npm run tauri:build
 - **前端 100% 复用**：`server/templates/`、`server/static/` 由 Flask 直接提供，桌面窗口在后端就绪后自动导航到本地随机端口，前端代码零修改
 - **文风管理**：Style Corpus 导入、可选向量化、Embedding 设置与检索评分调试集中在独立顶级页面；工作台只保留本次生成的文风选择
 - **后端 100% 复用**：`server/services/`、`server/routes/`、`server/database/` 用 PyInstaller 编译为单文件可执行程序，由 Tauri 以 Sidecar 方式自动拉起
-- **Sidecar 启动**（`src-tauri/src/lib.rs`）：Tauri 启动时以 `shell.sidecar("forestar-server")` 拉起 Flask 后端，先探测空闲端口并通过环境变量 `FORESTAR_PORT` 传给后端，轮询该端口就绪后跳转；退出时自动 kill 子进程，避免残留
+- **Sidecar 启动**（`src-tauri/src/lib.rs`）：Tauri 启动时以 `shell.sidecar("flora-server")` 拉起 Flask 后端，先探测空闲端口并通过环境变量 `FLORA_PORT` 传给后端，轮询该端口就绪后跳转；退出时自动 kill 子进程，避免残留
 - **`useLocalToolsDir: true`**（`tauri.conf.json`）：将 NSIS 等打包工具缓存到项目内 `src-tauri/target/.tauri/`，避免写入系统缓存目录（无权限或沙箱环境下必要）
 
 ### 安装与卸载
 
-- 安装：双击 `Forestar Editor_1.0.0_x64-setup.exe`，默认安装到当前用户目录（`currentUser` 模式，无需管理员权限），语言为简体中文；安装时会创建开始菜单与桌面快捷方式
+- 安装：双击 `Flora Editor_1.0.0_x64-setup.exe`，默认安装到当前用户目录（`currentUser` 模式，无需管理员权限），语言为简体中文；安装时会创建开始菜单与桌面快捷方式
 - 卸载：通过「设置 → 应用」或开始菜单中的卸载入口执行；NSIS 卸载器会移除应用文件、快捷方式与注册表条目
-- 数据保留：卸载时**默认保留用户数据**——SQLite 数据库存放在统一用户数据目录，前端缓存存放在 `%LOCALAPPDATA%\com.forestar.editor`（WebView2 数据）；如需彻底清除，可手动删除这两个目录
+- 数据保留：卸载时**默认保留用户数据**——SQLite 数据库存放在统一用户数据目录，前端缓存存放在 `%LOCALAPPDATA%\com.flora.editor`（WebView2 数据）；如需彻底清除，可手动删除这两个目录
 
 ## 常见问题排查
 
 | 现象 | 原因 | 解决 |
 |---|---|---|
-| 窗口提示「后端启动超时」 | 随机端口被占用、杀毒软件拦截、上次运行残留进程 | 任务管理器结束 `forestar-server.exe` 后重试；将应用加入杀毒白名单 |
-| 直接运行版双击无反应 | 主程序与后端不在同一目录，或后端被杀毒软件拦截 | 确认 `forestar-server.exe` 与主程序同目录；将应用加入杀毒白名单 |
+| 窗口提示「后端启动超时」 | 随机端口被占用、杀毒软件拦截、上次运行残留进程 | 任务管理器结束 `flora-server.exe` 后重试；将应用加入杀毒白名单 |
+| 直接运行版双击无反应 | 主程序与后端不在同一目录，或后端被杀毒软件拦截 | 确认 `flora-server.exe` 与主程序同目录；将应用加入杀毒白名单 |
 | `cargo` 命令找不到 | cargo 不在 PATH | `$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"` |
 | `NSIS directory is missing some files` | 打包工具缓存损坏或网络下载失败 | 删除 `src-tauri\target\.tauri\NSIS` 目录后重新 `npm run tauri:build` |
-| Sidecar 无法启动（终端无输出） | `binaries/` 下二进制命名不匹配 | 确认存在 `forestar-server-x86_64-pc-windows-msvc.exe`，重新执行 `npm run build:backend` |
+| Sidecar 无法启动（终端无输出） | `binaries/` 下二进制命名不匹配 | 确认存在 `flora-server-x86_64-pc-windows-msvc.exe`，重新执行 `npm run build:backend` |
 | 杀毒软件误报 | PyInstaller 单文件程序未签名 | 加入白名单，或后续配置代码签名证书 |
 | 构建下载超时（GitHub 资源被阻断） | 网络代理问题 | 使用镜像或代理下载后手动放入缓存，再重试构建 |
 

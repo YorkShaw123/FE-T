@@ -2,11 +2,11 @@
 
 ## 1. 目的
 
-本文区分 Forestar 当前可运行架构和 Style Engine 的目标架构。目标架构是渐进方向，不代表相关模块已经实现。
+本文区分 Flora 当前可运行架构和 Style Engine 的目标架构。目标架构是渐进方向，不代表相关模块已经实现。
 
 ## 2. 当前架构
 
-Forestar 是 Windows 本地桌面应用：
+Flora 是 Windows 本地桌面应用：
 
 ```text
 Tauri 桌面壳
@@ -136,7 +136,7 @@ Style Retrieval
 
 统一 backend 必须声明 `backend_id/model_id/model_version/dimension`。该完整签名同时写入 corpus 和 chunk；查询向量与库存向量的签名必须完全一致，禁止仅凭维度相同而混用。更换模型、模型版本或维度后，旧索引标记为需要重建，但原 chunk、Style Feature、Author Profile 和 FTS 数据不删除。
 
-本地模型存放在 `%USERPROFILE%\.forestar-editor\models`（开发时可用 `FORESTAR_MODELS_DIR` 覆盖），不存入 SQLite，也不随单文件后端打包。ONNX Session 进程内复用，CPU batch 推理；模型/运行时缺失是预期的可降级状态。
+本地模型存放在 `%USERPROFILE%\.flora-editor\models`（开发时可用 `FLORA_MODELS_DIR` 覆盖），不存入 SQLite，也不随单文件后端打包。ONNX Session 进程内复用，CPU batch 推理；模型/运行时缺失是预期的可降级状态。
 
 当前落地产物（2026-08-16）：`BAAI/bge-small-zh-v1.5` 官方权重由项目脚本导出为 opset 17 ONNX（512 维、CLS pooling、L2 normalization），manifest 固定记录来源、许可、导出器版本及模型/词表 SHA-256。ONNX Runtime 随正式 sidecar 构建，约 95 MB 模型仍作为用户目录外置资产；PyTorch/Transformers 只用于隔离的一次性导出，不属于运行时或发行包。
 
@@ -146,7 +146,7 @@ Style Retrieval
 |---|---|---|---|---|
 | 现有 BGE-M3 远程接口 | 多语种，1024 维 | 本地无模型，但依赖网络和 API Key | 保留现有 HTTP 兼容能力 | 仅作可选远程增强，不是默认 |
 | `BAAI/bge-small-zh-v1.5` | 中文，512 维，官方 C-MTEB retrieval 61.77 | 官方 safetensors 约 95.8 MB；4 层/512 hidden，普通 CPU 候选中较轻 | BERT 结构可导出 ONNX；`onnxruntime` Windows x64 wheel 约 13–14 MB，模型必须外置 | MIT；选为首个本地候选 |
-| multilingual-e5-small | 多语种，384 维 | 通常更小，但 Forestar 默认中文，不需要为多语种牺牲中文基准 | 同样需要 ONNX 与前缀协议适配 | 当前不采用，保留未来多语种选项 |
+| multilingual-e5-small | 多语种，384 维 | 通常更小，但 Flora 默认中文，不需要为多语种牺牲中文基准 | 同样需要 ONNX 与前缀协议适配 | 当前不采用，保留未来多语种选项 |
 
 选择 `bge-small-zh-v1.5` 不是把 Embedding 当作文风模型：它只验证“同场景语义高于无关场景”。官方源模型不等于可直接分发的 ONNX 产物；正式发布前仍需固定导出流程、opset、模型 SHA-256 和真实 Windows CPU 基准。若这些验证失败，可替换 backend 而不影响 Style Feature/Profile。
 

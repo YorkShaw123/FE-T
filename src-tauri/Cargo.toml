@@ -1,12 +1,12 @@
 [package]
-name = "forestar-editor"
+name = "flora-editor"
 version = "1.0.0"
-description = "Forestar Editor - AI文字创作助手桌面版"
-authors = ["Forestar"]
+description = "Flora Editor - AI文字创作助手桌面版"
+authors = ["Flora"]
 edition = "2021"
 
 [lib]
-name = "forestar_editor_lib"
+name = "flora_editor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

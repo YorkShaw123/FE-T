@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Forestar Editor 后端 PyInstaller 打包配置（单文件模式）。
+"""Flora Editor 后端 PyInstaller 打包配置（单文件模式）。
 
-用法：python -m PyInstaller forestar-server.spec --clean --noconfirm
-产物：dist/forestar-server.exe（Windows）
+用法：python -m PyInstaller flora-server.spec --clean --noconfirm
+产物：dist/flora-server.exe（Windows）
 """
 import os
 import sys
@@ -14,7 +14,7 @@ ROOT = os.path.abspath(SPECPATH)
 SERVER_DIR = os.path.join(ROOT, 'server')
 # 让 collect_submodules 能按包名（services/routes）扫描到 server/ 下的模块
 sys.path.insert(0, SERVER_DIR)
-BUNDLE_LOCAL_EMBEDDING = os.environ.get('FORESTAR_BUNDLE_ONNX') == '1'
+BUNDLE_LOCAL_EMBEDDING = os.environ.get('FLORA_BUNDLE_ONNX') == '1'
 
 # 收集项目内部包的全部子模块，避免动态导入遗漏
 hiddenimports = (
@@ -122,7 +122,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='forestar-server',
+    name='flora-server',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -135,7 +135,8 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
+    icon=os.path.join(ROOT, 'src-tauri', 'icons', 'icon.ico'),
     codesign_identity=None,
     entitlements_file=None,
-    version=os.path.join(ROOT, 'forestar-version-info.txt'),  # 注入版本信息，降低误报
+    version=os.path.join(ROOT, 'flora-version-info.txt'),  # 注入版本信息，降低误报
 )

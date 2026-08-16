@@ -1,5 +1,5 @@
 /**
- * Forestar Editor - 通用工具函数
+ * Flora Editor - 通用工具函数
  * 提供 DOM 查询、API 请求、提示、HTML 转义等无状态的基础工具。
  */
 
@@ -49,7 +49,7 @@ export function safeBind(selector, event, handler) {
     if (el) {
         el.addEventListener(event, handler);
     } else {
-        console.warn('[Forestar] 未找到元素:', selector);
+        console.warn('[Flora] 未找到元素:', selector);
     }
 }
 

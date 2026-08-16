@@ -35,8 +35,8 @@ dist/
 src-tauri/binaries/
 
 # 直接运行版桌面应用产物（复制到项目根目录，由构建脚本生成）
-/Forestar Editor.exe
-/forestar-server.exe
+/Flora Editor.exe
+/flora-server.exe
 
 # 运行时产物
 debug.log

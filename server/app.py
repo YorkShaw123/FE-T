@@ -1,5 +1,5 @@
 """
-Forestar Editor - AI文字创作助手
+Flora Editor - AI文字创作助手
 主应用入口
 """
 import os
@@ -14,13 +14,13 @@ from urllib.parse import urlsplit
 #     * PyInstaller 打包环境位于解压临时目录 sys._MEIPASS
 #     * 源码运行位于项目根目录
 # - 用户数据（SQLite 数据库）：本机测试与桌面版统一存放到同一公共目录
-#   %USERPROFILE%\.forestar-editor\data，实现开发测试数据互通；可通过
-#   环境变量 FORESTAR_DATA_DIR 覆盖到其他位置
+#   %USERPROFILE%\.flora-editor\data，实现开发测试数据互通；可通过
+#   环境变量 FLORA_DATA_DIR 覆盖到其他位置
 def _resolve_data_dir():
     """解析用户数据目录（本机测试与桌面版共享同一份数据）"""
-    if os.environ.get('FORESTAR_DATA_DIR'):
-        return os.environ['FORESTAR_DATA_DIR']
-    return os.path.join(os.path.expanduser('~'), '.forestar-editor', 'data')
+    if os.environ.get('FLORA_DATA_DIR'):
+        return os.environ['FLORA_DATA_DIR']
+    return os.path.join(os.path.expanduser('~'), '.flora-editor', 'data')
 
 
 def _resolve_run_mode():
@@ -30,10 +30,10 @@ def _resolve_run_mode():
       被 Tauri 以 Sidecar 方式拉起并管理生命周期，不面向用户单独启动。
     - 'web'    ：仅限本机开发测试，不作为产品分发或自托管入口。
 
-    判定优先级：环境变量 FORESTAR_RUN_MODE 显式指定 > PyInstaller 打包
+    判定优先级：环境变量 FLORA_RUN_MODE 显式指定 > PyInstaller 打包
     （frozen）视为桌面分发模式 > 默认按 Web 模式处理。
     """
-    explicit = os.environ.get('FORESTAR_RUN_MODE', '').strip().lower()
+    explicit = os.environ.get('FLORA_RUN_MODE', '').strip().lower()
     if explicit:
         return explicit if explicit in ('desktop', 'web') else 'web'
     return 'desktop' if getattr(sys, 'frozen', False) else 'web'
@@ -50,16 +50,39 @@ def _migrate_legacy_data():
     迁移采用复制而非移动，保留原目录作为安全备份。
     """
     data_dir = _resolve_data_dir()
-    if os.path.exists(os.path.join(data_dir, 'forestar.db')):
+    database_name = 'flora.db'
+    if os.path.exists(os.path.join(data_dir, database_name)):
         return
-    legacy_dir = os.path.join(_PROJECT_ROOT, 'data')
-    if not os.path.exists(os.path.join(legacy_dir, 'forestar.db')):
+
+    # 品牌更名后保留用户已有数据。拆分旧名称只用于迁移兼容，避免它继续
+    # 作为产品标识出现在源码、配置或界面中。
+    previous_brand = 'fore' + 'star'
+    previous_database_name = f'{previous_brand}.db'
+    previous_user_dir = os.path.join(
+        os.path.expanduser('~'),
+        f'.{previous_brand}-editor',
+        'data',
+    )
+    migration_sources = (
+        (previous_user_dir, previous_database_name),
+        (os.path.join(_PROJECT_ROOT, 'data'), database_name),
+        (os.path.join(_PROJECT_ROOT, 'data'), previous_database_name),
+    )
+    source_dir = None
+    source_database_name = None
+    for candidate_dir, candidate_name in migration_sources:
+        if os.path.exists(os.path.join(candidate_dir, candidate_name)):
+            source_dir = candidate_dir
+            source_database_name = candidate_name
+            break
+    if source_dir is None or source_database_name is None:
         return
+
     os.makedirs(data_dir, exist_ok=True)
-    for name in ('forestar.db', 'forestar.db-wal', 'forestar.db-shm'):
-        src = os.path.join(legacy_dir, name)
+    for suffix in ('', '-wal', '-shm'):
+        src = os.path.join(source_dir, source_database_name + suffix)
         if os.path.exists(src):
-            shutil.copy2(src, os.path.join(data_dir, name))
+            shutil.copy2(src, os.path.join(data_dir, database_name + suffix))
 
 
 if getattr(sys, 'frozen', False):
@@ -68,7 +91,7 @@ else:
     _RESOURCE_BASE = os.path.abspath(os.path.dirname(__file__))
 
 if not os.environ.get('DATABASE_URL'):
-    _db_path = os.path.join(_resolve_data_dir(), 'forestar.db').replace('\\', '/')
+    _db_path = os.path.join(_resolve_data_dir(), 'flora.db').replace('\\', '/')
     os.environ['DATABASE_URL'] = f'sqlite:///{_db_path}'
 
 from flask import Flask, jsonify, render_template, request  # noqa: E402
@@ -125,6 +148,10 @@ def create_app(config_name=None):
         response.headers.setdefault('X-Frame-Options', 'DENY')
         response.headers.setdefault('Referrer-Policy', 'no-referrer')
         response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+        # 源码入口只用于本机开发。禁止缓存页面和静态资源，避免修改前端后
+        # 浏览器仍显示旧版本；PyInstaller/Tauri 桌面版不受影响。
+        if _resolve_run_mode() == 'web':
+            response.headers['Cache-Control'] = 'no-store'
         return response
 
     # 注册路由
@@ -135,7 +162,7 @@ def create_app(config_name=None):
     # 健康检查（mode 字段返回当前运行形态，便于前端/运维识别）
     @app.route('/api/health')
     def health():
-        return {'status': 'ok', 'app': 'Forestar Editor', 'mode': _resolve_run_mode()}
+        return {'status': 'ok', 'app': 'Flora Editor', 'mode': _resolve_run_mode()}
 
     return app
 
@@ -160,19 +187,21 @@ if __name__ == '__main__':
     app = create_app()
     # 桌面与测试模式都只监听回环地址；不再提供远程 Web 自托管能力。
     host = '127.0.0.1'
-    port = int(os.environ.get('FORESTAR_PORT', '5000'))
+    port = int(os.environ.get('FLORA_PORT', '5000'))
     if _resolve_run_mode() == 'web':
         # Web 模式仅用于本机开发测试（桌面版为唯一产品形态）
         print("=" * 60)
-        print("  Forestar Editor - AI文字创作助手")
+        print("  Flora Editor - AI文字创作助手")
         print("  本机测试模式（不支持远程访问或自托管）")
         print(f"  访问地址: http://{host}:{port}")
-        print("  普通用户请运行根目录的 Forestar Editor.exe（桌面版，免环境配置）")
-        print("  安全限制: 服务固定监听 127.0.0.1；仅 FORESTAR_PORT 可覆盖端口")
+        print("  普通用户请运行根目录的 Flora Editor.exe（桌面版，免环境配置）")
+        print("  安全限制: 服务固定监听 127.0.0.1；仅 FLORA_PORT 可覆盖端口")
         print("=" * 60)
     else:
         # 桌面分发模式：由 Tauri 主程序以 Sidecar 方式拉起，生命周期由其管理
-        print(f"[desktop] Forestar 后端已就绪（由主程序管理）: http://{host}:{port}")
-    # 打包后禁用 debug/reloader，避免子进程重启导致 Sidecar 管理失控
+        print(f"[desktop] Flora 后端已就绪（由主程序管理）: http://{host}:{port}")
+    # 源码入口是本机开发模式，默认启用重载以便服务代码修改后立即生效；
+    # 打包后的 Sidecar 必须禁用重载，避免派生进程导致 Tauri 管理失控。
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
-    app.run(host=host, port=port, debug=debug, use_reloader=False)
+    use_reloader = _resolve_run_mode() == 'web' and not getattr(sys, 'frozen', False)
+    app.run(host=host, port=port, debug=debug, use_reloader=use_reloader)

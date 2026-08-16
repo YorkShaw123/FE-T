@@ -1,10 +1,10 @@
-# Forestar Editor 项目级开发约束
+# Flora Editor 项目级开发约束
 
 本文件只记录本项目长期有效、每次开发都必须遵守的约束。通用工程规则遵循上级 `AGENTS.md`。
 
 ## 产品与架构
 
-- Forestar Editor 是 Windows 本地桌面程序。
+- Flora Editor 是 Windows 本地桌面程序。
 - Tauri 2 + Flask Sidecar 是正式产品架构；浏览器入口只用于本机开发测试。
 - 不得擅自把项目改造成 Web、SaaS、远程服务或自托管平台。
 - 用户数据使用本地 SQLite；数据库变更必须通过 `server/database/migrations.py` 的现有幂等迁移机制完成，并兼容已有数据。

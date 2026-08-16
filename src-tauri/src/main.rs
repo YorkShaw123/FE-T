@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    forestar_editor_lib::run()
+    flora_editor_lib::run()
 }

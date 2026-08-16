@@ -1,10 +1,10 @@
 /**
- * Forestar Editor - 提示词预览抽屉
+ * Flora Editor - 提示词预览抽屉
  * 负责提示词预览的展开/收起、Token 预算渲染、风格片段选择渲染与预览请求。
  */
 import { $, api, toast, escapeHtml, safeBind } from './utils.js';
 import { getActiveTemplateIds } from './state.js';
-import { getWorkspaceStyleStrength, getWorkspaceStyleMode } from './styleSettings.js';
+import { getWorkspaceStyleMode } from './styleSettings.js';
 import { getSelectedCorpusIds, getEmbeddingApiKey } from './styleCorpora.js';
 import { getWorkspaceVariableValues } from './templatePanel.js';
 
@@ -51,7 +51,6 @@ export function buildPromptPreviewPayload() {
         variable_values: getWorkspaceVariableValues(),
         previous_article: $('#previous-article').value,
         template_ids: getActiveTemplateIds(),
-        style_strength: getWorkspaceStyleStrength(),
         provider: $('#provider-select').value,
         model: $('#model-select').value,
         deai_enabled: $('#deai-enabled').checked,
@@ -71,7 +70,8 @@ export function buildPromptPreviewPayload() {
 /** 渲染 Token 预算面板 */
 export function renderTokenBudget(budget) {
     const panel = $('#token-budget-panel');
-    if (!panel || !budget) return;
+    const summary = $('#workspace-token-summary');
+    if (!budget) return;
     const labels = { safe: '预算充足', warning: '接近上限', over: '已超限' };
     const phaseLabels = { primary: '正文生成', deai: '去 AI 味', style_rewrite: '严格文风重写' };
     const rows = Object.entries(budget.phases).map(([key, phase]) => {
@@ -87,9 +87,18 @@ export function renderTokenBudget(budget) {
             <small>模型窗口 ${phase.context_window.toLocaleString()} · 输出预留 ${phase.output_reserved_tokens.toLocaleString()} · 安全余量 ${phase.safety_reserved_tokens.toLocaleString()}</small>
         </div>`;
     }).join('');
-    panel.className = `token-budget-panel ${budget.status}`;
-    panel.innerHTML = `<div class="token-budget-heading"><span>Token 预算（估算）</span><strong>${labels[budget.status] || budget.status}</strong></div>${rows}`;
-    panel.style.display = '';
+    if (panel) {
+        panel.className = `token-budget-panel ${budget.status}`;
+        panel.innerHTML = `<div class="token-budget-heading"><span>Token 预算（估算）</span><strong>${labels[budget.status] || budget.status}</strong></div>${rows}`;
+        panel.style.display = '';
+    }
+    if (summary) {
+        const primary = budget.phases?.primary;
+        summary.className = `workspace-token-summary ${budget.status}`;
+        summary.innerHTML = primary
+            ? `<span>预计输入</span><strong>${primary.input_tokens.toLocaleString()} Token</strong><small>${labels[budget.status] || budget.status} · 生成前估算</small>`
+            : `<span>Token 预算</span><strong>${labels[budget.status] || budget.status}</strong><small>生成前估算</small>`;
+    }
 }
 
 /** 渲染智能风格链本次选中的风格片段 */
@@ -170,6 +179,11 @@ safeBind('#btn-close-preview', 'click', () => {
     $('#prompt-preview-fallback').style.display = 'none';
     $('#prompt-preview-meta').style.display = 'none';
     $('#token-budget-panel').style.display = 'none';
+    const summary = $('#workspace-token-summary');
+    if (summary) {
+        summary.className = 'workspace-token-summary idle';
+        summary.innerHTML = '<span>Token 预算</span><strong>等待预检</strong><small>点击生成或提示词预览后显示</small>';
+    }
     $('#style-selection-panel').style.display = 'none';
     $('#prompt-preview-empty').style.display = '';
     $('#btn-close-preview').style.display = 'none';

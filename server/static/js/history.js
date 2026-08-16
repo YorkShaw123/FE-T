@@ -1,5 +1,5 @@
 /**
- * Forestar Editor - 生成记录（历史）
+ * Flora Editor - 生成记录（历史）
  * 负责生成记录列表、搜索、置顶、删除、详情查看与修改版 diff 展示。
  */
 import { $, $$, api, toast, escapeHtml, safeBind, formatArticle } from './utils.js';

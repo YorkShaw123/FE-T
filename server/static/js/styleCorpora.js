@@ -1,5 +1,5 @@
 /**
- * Forestar Editor - 风格语料库管理（Style RAG）
+ * Flora Editor - 风格语料库管理（Style RAG）
  * 负责语料库 CRUD、文本导入、向量化索引、检索测试，以及生成请求的语料选择。
  */
 import { $, $$, api, toast, escapeHtml, safeBind } from './utils.js';
@@ -24,7 +24,7 @@ function statusBadge(status) {
 
 function corpusIndexKey(corpusId) {
     // 语料库多选状态持久化在 localStorage，避免切换页面丢失
-    return `forestar_rag_corpora_${corpusId}`;
+    return `flora_rag_corpora_${corpusId}`;
 }
 
 /** 读取本次参与检索的语料库 ID（勾选 + localStorage 记忆） */

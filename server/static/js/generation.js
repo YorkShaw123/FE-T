@@ -1,10 +1,10 @@
 /**
- * Forestar Editor - 文章生成与结果展示
+ * Flora Editor - 文章生成与结果展示
  * 负责去AI味开关、流式生成流程、结果渲染、复制与下载。
  */
 import { $, api, toast, safeBind, formatArticle, getArticleText } from './utils.js';
 import { state, getActiveTemplateIds } from './state.js';
-import { getWorkspaceStyleStrength, getWorkspaceStyleMode } from './styleSettings.js';
+import { getWorkspaceStyleMode } from './styleSettings.js';
 import { getSelectedCorpusIds, getEmbeddingApiKey } from './styleCorpora.js';
 import { fetchPromptPreview, renderTokenBudget, renderStyleFallbackWarning } from './promptPreview.js';
 import { getWorkspaceVariableValues } from './templatePanel.js';
@@ -75,6 +75,7 @@ safeBind('#btn-generate', 'click', async () => {
 
     // 重置显示区域，准备接收流式内容
     $('#result-section').style.display = '';
+    $('#result-section').classList.add('is-running');
     $('#first-content').innerHTML = '';
     $('#deai-content').innerHTML = '';
     $('#style-rewrite-content').innerHTML = '';
@@ -110,6 +111,7 @@ safeBind('#btn-generate', 'click', async () => {
             toast('生成失败: ' + e.message, 'error');
         }
     } finally {
+        $('#result-section').classList.remove('is-running');
         state.isGenerating = false;
         state.generationController = null;
         $('#btn-generate').disabled = false;
@@ -147,7 +149,6 @@ async function generateStream(apiKey, templateIds, deaiEnabled, strictStyleRewri
             previous_article: $('#previous-article').value,
             variable_values: getWorkspaceVariableValues(),
             template_ids: templateIds,
-            style_strength: getWorkspaceStyleStrength(),
             structured_prompt_enabled: $('#structured-prompt-enabled').checked,
             style_mode: getWorkspaceStyleMode(),
             scene_type: 'auto',

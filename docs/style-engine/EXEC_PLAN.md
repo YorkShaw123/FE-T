@@ -308,7 +308,7 @@
 
 - 新增统一 `EmbeddingBackend`，公开 `embed_text`、`embed_batch`、`dimension`、`model_id`、`model_version` 与 `backend_id`；
 - `RemoteEmbeddingBackend` 兼容现有硅基流动 `BAAI/bge-m3`；已有调用传入 API Key 时仍走远程后端；
-- `LocalEmbeddingBackend` 采用 ONNX Runtime CPU 路线，首个候选为 MIT 许可的 `BAAI/bge-small-zh-v1.5`（512 维、最大 512 token）。模型目录为用户数据根目录旁的 `models/`，不写 SQLite、不打进 `forestar-server.exe`；
+- `LocalEmbeddingBackend` 采用 ONNX Runtime CPU 路线，首个候选为 MIT 许可的 `BAAI/bge-small-zh-v1.5`（512 维、最大 512 token）。模型目录为用户数据根目录旁的 `models/`，不写 SQLite、不打进 `flora-server.exe`；
 - 不加入 Transformers/PyTorch。使用固定 BERT WordPiece 词表、本地 ONNX、CLS pooling 与 L2 normalization；Session 按模型路径进程内缓存，支持批量推理；
 - ONNX Runtime 作为可选依赖。其 Windows x64 wheel 约 13–14 MB，打包后仍会增加体积，因此本阶段不进入主 `requirements.txt`；缺失时后端返回可诊断的 unavailable 状态；
 - corpus/chunk 增加 backend、model version 元数据；向量只有在 backend/model/version/dimension 完全一致时才参与计算，不一致明确提示重新索引；
@@ -600,7 +600,7 @@
 
 - 从 `BAAI/bge-small-zh-v1.5` 官方 Hugging Face 仓库下载官方权重，在开发机临时环境中导出固定 opset 的 ONNX；不采用来源不明的第三方 ONNX 转换文件；
 - 导出所需 PyTorch/Transformers 只存在于被 Git 忽略的构建环境，不进入应用依赖或 PyInstaller 发行包；
-- 运行时只增加 `onnxruntime`，正式一键构建默认携带该 CPU runtime；约 96 MB 模型继续外置在 `%USERPROFILE%\.forestar-editor\models\bge-small-zh-v1.5`；
+- 运行时只增加 `onnxruntime`，正式一键构建默认携带该 CPU runtime；约 96 MB 模型继续外置在 `%USERPROFILE%\.flora-editor\models\bge-small-zh-v1.5`；
 - 安装产物包含模型身份、版本、维度、opset、官方来源和 SHA-256；损坏或缺失时明确报错，并继续允许 Style-only 降级；
 - 不修改数据库 schema、既有向量或检索权重；安装完成后由用户对需要语义辅助的 corpus 主动重新索引。
 

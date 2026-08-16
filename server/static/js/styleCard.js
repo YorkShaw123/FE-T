@@ -1,5 +1,5 @@
 /**
- * Forestar Editor - 范例文章风格卡与片段库
+ * Flora Editor - 范例文章风格卡与片段库
  * 负责 Style Card 的加载、表单编辑、JSON 应用、分析与片段库的展示、重建和更新。
  */
 import { $, $$, api, toast, escapeHtml, safeBind, linesToList } from './utils.js';

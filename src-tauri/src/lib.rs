@@ -38,14 +38,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // 1) 探测空闲端口，并通过环境变量 FORESTAR_PORT 传给后端
+            // 1) 探测空闲端口，并通过环境变量 FLORA_PORT 传给后端
             //    （app.py 读取该变量；所有模式都只绑定回环地址）
             let server_port = pick_free_port();
             let sidecar_command = app
                 .shell()
-                .sidecar("forestar-server")
-                .expect("未找到 Sidecar 二进制 forestar-server，请先执行后端打包")
-                .env("FORESTAR_PORT", server_port.to_string());
+                .sidecar("flora-server")
+                .expect("未找到 Sidecar 二进制 flora-server，请先执行后端打包")
+                .env("FLORA_PORT", server_port.to_string());
             let (mut rx, child) = sidecar_command
                 .spawn()
                 .expect("启动 Flask Sidecar 失败");

@@ -1,4 +1,4 @@
-"""验证 Forestar 本地 Embedding 模型、batch 推理与基本中文场景语义。"""
+"""验证 Flora 本地 Embedding 模型、batch 推理与基本中文场景语义。"""
 from __future__ import annotations
 
 import argparse

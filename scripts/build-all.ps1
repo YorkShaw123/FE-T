@@ -11,15 +11,16 @@ Write-Host "===== 步骤1/3: 打包后端 ====="
 & (Join-Path $PSScriptRoot "build-backend.ps1") -BundleLocalEmbedding
 
 Write-Host "===== 步骤2/3: 构建 Tauri 桌面应用 ====="
-npm run tauri build
+# 显式调用 npm.cmd，避免 Windows PowerShell 执行策略拦截 npm.ps1。
+& npm.cmd run tauri build
 
 Write-Host "===== 步骤3/3: 复制直接运行版到项目根目录 ====="
-$appExe = Join-Path $Root "src-tauri\target\release\forestar-editor.exe"
-$serverExe = Join-Path $Root "src-tauri\binaries\forestar-server-x86_64-pc-windows-msvc.exe"
-$destApp = Join-Path $Root "Forestar Editor.exe"
+$appExe = Join-Path $Root "src-tauri\target\release\flora-editor.exe"
+$serverExe = Join-Path $Root "src-tauri\binaries\flora-server-x86_64-pc-windows-msvc.exe"
+$destApp = Join-Path $Root "Flora Editor.exe"
 # 注意：Tauri 运行时按「exe 同目录 + 无 target triple 后缀」查找 sidecar，
-# 因此根目录必须命名为 forestar-server.exe
-$destServer = Join-Path $Root "forestar-server.exe"
+# 因此根目录必须命名为 flora-server.exe
+$destServer = Join-Path $Root "flora-server.exe"
 
 if (-not (Test-Path $appExe)) { throw "未找到 $appExe，请确认 Tauri 构建成功" }
 if (-not (Test-Path $serverExe)) { throw "未找到 $serverExe，请确认后端打包成功" }

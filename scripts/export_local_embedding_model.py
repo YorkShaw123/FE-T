@@ -1,4 +1,4 @@
-"""从官方 Hugging Face 权重导出 Forestar 使用的本地 ONNX 模型。"""
+"""从官方 Hugging Face 权重导出 Flora 使用的本地 ONNX 模型。"""
 from __future__ import annotations
 
 import argparse
@@ -120,7 +120,7 @@ def install_atomically(target_dir: Path, force: bool) -> None:
     target_dir.parent.mkdir(parents=True, exist_ok=True)
     if target_dir.exists() and not force:
         raise FileExistsError(f"目标目录已存在：{target_dir}；如需替换请使用 --force")
-    with tempfile.TemporaryDirectory(prefix="forestar-embedding-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="flora-embedding-") as temporary:
         staging = Path(temporary) / target_dir.name
         export_model(staging)
         if target_dir.exists():

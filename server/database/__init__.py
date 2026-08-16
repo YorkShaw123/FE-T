@@ -33,7 +33,7 @@ def init_db(app):
         data_dir = os.path.dirname(db_path)
         if data_dir and not os.path.exists(data_dir):
             os.makedirs(data_dir, exist_ok=True)
-            print(f'[Forestar] 已创建数据目录: {data_dir}')
+            print(f'[Flora] 已创建数据目录: {data_dir}')
 
     db.init_app(app)
     with app.app_context():
@@ -45,4 +45,4 @@ def init_db(app):
         db.create_all()
         apply_sqlite_migrations(db)
 
-    print(f'[Forestar] 数据库已就绪: {db_path}')
+    print(f'[Flora] 数据库已就绪: {db_path}')
