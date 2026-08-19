@@ -164,6 +164,33 @@ def test_workspace_exposes_ordered_generation_flow_and_token_summary():
     assert html.count('id="btn-generate"') == 1
 
 
+def test_generation_status_stays_visible_and_result_has_unread_reminder():
+    generation_js = (SERVER_DIR / "static" / "js" / "generation.js").read_text(
+        encoding="utf-8",
+    )
+    workflow_js = (SERVER_DIR / "static" / "js" / "workflowCanvas.js").read_text(
+        encoding="utf-8",
+    )
+    stylesheet = (SERVER_DIR / "static" / "css" / "style.css").read_text(
+        encoding="utf-8",
+    )
+
+    assert "正在生成故事..." in generation_js
+    assert "classList.add('has-unread-result')" in generation_js
+    assert "classList.remove('has-unread-result')" in workflow_js
+    assert ".flow-result-node.has-unread-result" in stylesheet
+    assert "@keyframes result-ready-pulse" in stylesheet
+
+
+def test_tauri_window_explicitly_uses_canonical_high_resolution_icon():
+    tauri_lib = (PROJECT_ROOT / "src-tauri" / "src" / "lib.rs").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'window.set_icon(tauri::include_image!("./icons/icon.png"))?' in tauri_lib
+    assert (PROJECT_ROOT / "src-tauri" / "icons" / "icon.png").is_file()
+
+
 def test_style_retrieval_debugger_is_collapsed_by_default():
     html = create_app("production").test_client().get("/").get_data(as_text=True)
     details_tag = html.split('<details id="corpus-search-details"', 1)[1].split('>', 1)[0]

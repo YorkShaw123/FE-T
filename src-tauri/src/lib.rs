@@ -78,6 +78,9 @@ pub fn run() {
             let window = app
                 .get_webview_window("main")
                 .expect("找不到主窗口 main");
+            // 显式使用 canonical 512px PNG 作为运行时窗口图标。
+            // Windows 会根据任务栏缩放自行降采样，避免窗口继承低分辨率资源后被放大。
+            window.set_icon(tauri::include_image!("./icons/icon.png"))?;
             std::thread::spawn(move || {
                 if wait_for_server(server_port, STARTUP_TIMEOUT) {
                     let _ = window.eval(&format!(

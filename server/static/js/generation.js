@@ -76,6 +76,7 @@ safeBind('#btn-generate', 'click', async () => {
     // 重置显示区域，准备接收流式内容
     $('#result-section').style.display = '';
     $('#result-section').classList.add('is-running');
+    $('#result-section').classList.remove('has-unread-result');
     $('#first-content').innerHTML = '';
     $('#deai-content').innerHTML = '';
     $('#style-rewrite-content').innerHTML = '';
@@ -102,6 +103,7 @@ safeBind('#btn-generate', 'click', async () => {
         state.resultReady = true;
         $('#btn-open-result-editor').disabled = false;
         $('#btn-open-result-editor').title = '进入全屏编辑';
+        $('#result-section').classList.add('has-unread-result');
     } catch (e) {
         $('#loading-overlay').style.display = 'none';
         if (e.name === 'AbortError') {
@@ -163,7 +165,8 @@ async function generateStream(apiKey, templateIds, deaiEnabled, strictStyleRewri
         throw new Error(err.error || '请求失败');
     }
 
-    $('#loading-overlay').style.display = 'none';
+    $('#loading-overlay').style.display = '';
+    $('#loading-text').textContent = '正在生成故事...';
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -188,9 +191,9 @@ async function generateStream(apiKey, templateIds, deaiEnabled, strictStyleRewri
             $('#loading-text').textContent = '正在去AI味处理...';
             $('#deai-content-section').style.display = '';
         } else {
-            $('#loading-overlay').style.display = 'none';
-            $('#loading-text').textContent = '';
-            $('#first-content-section').querySelector('.section-header h4').textContent = '第一版（原始）';
+            $('#loading-overlay').style.display = '';
+            $('#loading-text').textContent = '正在生成故事...';
+            $('#first-content-section').querySelector('.section-header h4').textContent = '第一版（生成中...）';
         }
     }
 
@@ -321,6 +324,7 @@ function displayResult(response) {
     state.resultReady = true;
     $('#btn-open-result-editor').disabled = false;
     $('#btn-open-result-editor').title = '进入全屏编辑';
+    section.classList.add('has-unread-result');
 
     section.scrollIntoView({ behavior: 'smooth' });
 }

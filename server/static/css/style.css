@@ -311,6 +311,22 @@ body.workflow-modal-open { overflow: hidden; }
 .workspace-token-summary.warning { border-color: color-mix(in srgb, var(--warning) 55%, var(--line)); }
 .workspace-token-summary.over { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
 .flow-result-node { max-height: none; overflow: visible; border-color: color-mix(in srgb, var(--workflow-line) 42%, var(--line)); }
+.flow-result-node.has-unread-result {
+    animation: result-ready-pulse 2.4s ease-in-out infinite;
+}
+@keyframes result-ready-pulse {
+    0%, 100% {
+        border-color: color-mix(in srgb, var(--jade) 52%, var(--line));
+        box-shadow: 0 8px 24px rgba(4, 15, 10, .08), 0 0 0 0 color-mix(in srgb, var(--jade) 0%, transparent);
+    }
+    50% {
+        border-color: color-mix(in srgb, var(--jade) 82%, var(--line));
+        box-shadow: 0 8px 24px rgba(4, 15, 10, .08), 0 0 0 5px color-mix(in srgb, var(--jade) 14%, transparent);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .flow-result-node.has-unread-result { animation: none; border-color: var(--jade); }
+}
 .prompt-preview-card { min-height: 310px; overflow: hidden; }
 .preview-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 13px; border-bottom: 1px solid var(--line); }
 .preview-card-title { display: flex; gap: 10px; }

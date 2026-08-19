@@ -115,6 +115,7 @@ export function initWorkflowCanvas() {
         node.setAttribute('aria-label', `打开${node.querySelector('.flow-node-label strong')?.textContent || '流程节点'}详情`);
         const openNode = () => {
             if (activeNode || !modal || !modalBody) return;
+            node.classList.remove('has-unread-result');
             activeNode = node;
             activeDetails = details;
             node.classList.add('is-selected');
