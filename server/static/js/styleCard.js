@@ -7,8 +7,9 @@ import { state } from './state.js';
 
 /** 根据风格卡数据渲染编辑器表单 */
 function renderStyleCardProfile(profile) {
-    state.currentStyleCard = profile?.card || null;
-    const hasCard = Boolean(profile?.card);
+    const card = profile?.card;
+    const hasCard = Boolean(card && typeof card === 'object' && !Array.isArray(card));
+    state.currentStyleCard = hasCard ? card : null;
     const statusLabels = {
         missing: '尚未分析', analyzing: '正在分析', ready: '可用于智能风格链', error: '分析失败',
     };
@@ -24,25 +25,33 @@ function renderStyleCardProfile(profile) {
         if (profile?.error_message) $('#style-card-status').textContent = `分析失败：${profile.error_message}`;
         return;
     }
-    const card = profile.card;
     $('#style-card-primary').checked = Boolean(profile.is_primary);
     $('#style-card-summary').value = card.summary || '';
     $('#style-card-person').value = card.narration?.person || '';
     $('#style-card-distance').value = card.narration?.distance || '';
     $('#style-card-rhythm').value = card.rhythm?.sentence_pattern || '';
     $('#style-card-register').value = card.language?.register || '';
-    $('#style-card-behaviors').value = (card.language?.preferred_behaviors || []).join('\n');
-    $('#style-card-avoid').value = (card.avoid || []).join('\n');
-    $('#style-card-rules').value = (card.checkable_rules || []).map(rule =>
-        `${rule.priority || 'medium'}|${rule.rule || ''}`
-    ).join('\n');
+    const behaviors = Array.isArray(card.language?.preferred_behaviors)
+        ? card.language.preferred_behaviors : [];
+    const avoid = Array.isArray(card.avoid) ? card.avoid : [];
+    const rules = Array.isArray(card.checkable_rules) ? card.checkable_rules : [];
+    $('#style-card-behaviors').value = behaviors.join('\n');
+    $('#style-card-avoid').value = avoid.join('\n');
+    $('#style-card-rules').value = rules.map(rule => {
+        if (typeof rule === 'string') return `medium|${rule}`;
+        if (!rule || typeof rule !== 'object') return '';
+        return `${rule.priority || 'medium'}|${rule.rule || ''}`;
+    }).filter(Boolean).join('\n');
     $('#style-card-json').value = JSON.stringify(card, null, 2);
     const notice = [];
     if (profile.is_stale) notice.push('模板正文已变化，这张风格卡需要重新分析。');
     if (profile.is_primary) notice.push('当前为主风格模板。');
+    if (profile.error_message) notice.push(`最近一次重新分析失败，仍使用上次成功结果：${profile.error_message}`);
     notice.push(`分析模型：${profile.analysis_model || '未知'}`);
     $('#style-card-notice').textContent = notice.join(' ');
-    $('#style-card-notice').classList.toggle('warning', Boolean(profile.is_stale));
+    $('#style-card-notice').classList.toggle(
+        'warning', Boolean(profile.is_stale || profile.error_message),
+    );
 }
 
 /** 从风格卡表单组装卡片对象 */
@@ -94,10 +103,14 @@ export async function loadStyleProfile() {
     }
     try {
         const data = await api(`/api/style-profiles/${id}`);
+        if ($('#edit-template-id').value !== id) return;
         renderStyleCardProfile(data.data);
-        if (data.data.card) await loadStyleExcerpts();
+        if (data.data.card) await loadStyleExcerpts(id);
+        else renderStyleExcerpts([]);
     } catch (error) {
+        if ($('#edit-template-id').value !== id) return;
         renderStyleCardProfile({ analysis_status: 'error', error_message: error.message, card: null });
+        renderStyleExcerpts([]);
     }
 }
 
@@ -150,13 +163,15 @@ function renderStyleExcerpts(excerpts) {
 }
 
 /** 加载当前编辑模板的参考片段 */
-async function loadStyleExcerpts() {
-    const id = $('#edit-template-id').value;
+async function loadStyleExcerpts(templateId = $('#edit-template-id').value) {
+    const id = String(templateId || '');
     if (!id) return renderStyleExcerpts([]);
     try {
         const data = await api(`/api/style-profiles/${id}/excerpts`);
+        if ($('#edit-template-id').value !== id) return;
         renderStyleExcerpts(data.data || []);
     } catch (error) {
+        if ($('#edit-template-id').value !== id) return;
         $('#style-excerpt-summary').textContent = '片段加载失败';
         $('#style-excerpt-list').innerHTML = `<div class="style-excerpt-empty">${escapeHtml(error.message)}</div>`;
     }
@@ -169,7 +184,7 @@ async function updateExcerpt(excerptId, payload) {
         await api(`/api/style-profiles/${templateId}/excerpts/${excerptId}`, {
             method: 'PUT', body: JSON.stringify(payload),
         });
-        await loadStyleExcerpts();
+        if ($('#edit-template-id').value === templateId) await loadStyleExcerpts(templateId);
     } catch (error) {
         toast('更新片段失败：' + error.message, 'error');
     }
@@ -193,6 +208,7 @@ async function rebuildCurrentStyleExcerpts() {
                 model: $('#model-select').value,
             }),
         });
+        if ($('#edit-template-id').value !== templateId) return;
         renderStyleExcerpts(data.data || []);
         toast(`已生成 ${data.data.length} 个参考片段`, 'success');
     } catch (error) {
@@ -210,7 +226,10 @@ async function analyzeCurrentStyleCard() {
     const apiKey = $('#api-key-input').value.trim();
     if (!apiKey) { toast('请先在顶部输入 API 密钥', 'warning'); return; }
     const buttons = [$('#btn-analyze-style-card'), $('#btn-refresh-style-card')];
+    const loading = $('#style-card-analysis-loading');
     buttons.forEach(button => { button.disabled = true; });
+    loading.style.display = 'flex';
+    loading.closest('.style-card-panel-body').scrollTop = 0;
     $('#style-card-status').textContent = '正在分析语言风格…';
     try {
         const data = await api(`/api/style-profiles/${id}/analyze`, {
@@ -221,13 +240,17 @@ async function analyzeCurrentStyleCard() {
                 model: $('#model-select').value,
             }),
         });
+        if ($('#edit-template-id').value !== id) return;
         renderStyleCardProfile(data.data);
-        await loadStyleExcerpts();
+        await loadStyleExcerpts(id);
         toast('Style Card 分析完成', 'success');
     } catch (error) {
-        toast('风格分析失败：' + error.message, 'error');
-        await loadStyleProfile();
+        if ($('#edit-template-id').value === id) {
+            toast('风格分析失败：' + error.message, 'error');
+            await loadStyleProfile();
+        }
     } finally {
+        loading.style.display = 'none';
         buttons.forEach(button => { button.disabled = false; });
     }
 }
@@ -245,6 +268,9 @@ safeBind('#btn-rebuild-style-excerpts', 'click', rebuildCurrentStyleExcerpts);
 safeBind('#btn-apply-style-json', 'click', () => {
     try {
         const card = JSON.parse($('#style-card-json').value);
+        if (!card || typeof card !== 'object' || Array.isArray(card)) {
+            throw new Error('Style Card 必须是 JSON 对象');
+        }
         renderStyleCardProfile({
             analysis_status: 'ready', card, is_primary: $('#style-card-primary').checked,
             analysis_model: '手动编辑', is_stale: false,
@@ -262,6 +288,7 @@ safeBind('#btn-save-style-card', 'click', async () => {
             method: 'PUT',
             body: JSON.stringify({ card, is_primary: $('#style-card-primary').checked }),
         });
+        if ($('#edit-template-id').value !== id) return;
         renderStyleCardProfile(data.data);
         toast('Style Card 已保存', 'success');
     } catch (error) {
@@ -272,6 +299,7 @@ safeBind('#btn-restore-style-card', 'click', async () => {
     const id = $('#edit-template-id').value;
     try {
         const data = await api(`/api/style-profiles/${id}/restore`, { method: 'POST' });
+        if ($('#edit-template-id').value !== id) return;
         renderStyleCardProfile(data.data);
         toast('已恢复自动分析结果');
     } catch (error) {

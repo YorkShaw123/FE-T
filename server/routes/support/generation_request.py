@@ -17,10 +17,9 @@ class GenerationRequest:
     custom_suffix: str = ''
     deai_enabled: bool = False
     deai_prompt: str = ''
-    strict_style_rewrite_enabled: bool = False
+    style_reference_enabled: bool = False
     title: str = ''
     previous_article: str = ''
-    variable_values: dict = field(default_factory=dict)
     template_ids: tuple = field(default_factory=tuple)
     style_strength: str = 'light'
     structured_prompt_enabled: bool = False
@@ -29,13 +28,11 @@ class GenerationRequest:
     # Style RAG：语料库 ID 列表与 Embedding API 密钥（与 LLM 密钥分开）
     style_corpus_ids: tuple = field(default_factory=tuple)
     embedding_api_key: str = ''
+    sampling: dict = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, data):
         data = data or {}
-        variable_values = data.get('variable_values', {})
-        if not isinstance(variable_values, dict):
-            raise GenerationError('variable_values 必须是对象')
         raw_ids = data.get('template_ids') or ()
         if not isinstance(raw_ids, (list, tuple)):
             raise GenerationError('template_ids 必须是数组')
@@ -59,6 +56,9 @@ class GenerationRequest:
             style_corpus_ids = tuple(int(item) for item in raw_corpus_ids)
         except (TypeError, ValueError) as exc:
             raise GenerationError('style_corpus_ids 只能包含整数') from exc
+        sampling = data.get('sampling') or {}
+        if not isinstance(sampling, dict):
+            raise GenerationError('sampling 必须是对象')
         return cls(
             api_key=str(data.get('api_key', '') or ''),
             provider=str(data.get('provider', 'deepseek') or 'deepseek'),
@@ -69,10 +69,12 @@ class GenerationRequest:
             custom_suffix=str(data.get('custom_suffix', '') or ''),
             deai_enabled=bool(data.get('deai_enabled', False)),
             deai_prompt=str(data.get('deai_prompt', '') or ''),
-            strict_style_rewrite_enabled=bool(data.get('strict_style_rewrite_enabled', False)),
+            style_reference_enabled=bool(data.get(
+                'style_reference_enabled',
+                data.get('strict_style_rewrite_enabled', False),
+            )),
             title=str(data.get('title', '') or ''),
             previous_article=str(data.get('previous_article', '') or ''),
-            variable_values=variable_values,
             template_ids=template_ids,
             style_strength=str(data.get('style_strength', 'light') or 'light'),
             structured_prompt_enabled=bool(data.get('structured_prompt_enabled', False)),
@@ -80,6 +82,7 @@ class GenerationRequest:
             scene_type=scene_type,
             style_corpus_ids=style_corpus_ids,
             embedding_api_key=str(data.get('embedding_api_key', '') or ''),
+            sampling=sampling,
         )
 
     def load_templates(self):
@@ -95,7 +98,6 @@ class GenerationRequest:
     def generation_kwargs(self, stream):
         return {
             'templates': self.load_templates(),
-            'variable_values': self.variable_values,
             'api_key': self.api_key,
             'provider': self.provider,
             'model': self.model,
@@ -105,7 +107,7 @@ class GenerationRequest:
             'custom_suffix': self.custom_suffix,
             'deai_enabled': self.deai_enabled,
             'deai_prompt': self.deai_prompt,
-            'strict_style_rewrite_enabled': self.strict_style_rewrite_enabled,
+            'style_reference_enabled': self.style_reference_enabled,
             'title': self.title,
             'previous_article': self.previous_article,
             'stream': stream,
@@ -115,6 +117,8 @@ class GenerationRequest:
             'scene_type': self.scene_type,
             'style_corpus_ids': self.style_corpus_ids,
             'embedding_api_key': self.embedding_api_key,
+            'sampling': self.sampling,
+            'max_tokens': self.sampling.get('max_tokens', 0),
         }
 
     def preview_kwargs(self):

@@ -74,13 +74,6 @@
                     <div class="panel-body" id="template-panel-body">
                         <!-- 动态加载模板列表 -->
                     </div>
-                    <div id="workspace-variables-section" class="workspace-variables-section" hidden>
-                        <button id="btn-open-workspace-variables" class="btn btn-outline workspace-variables-button"
-                            type="button">
-                            <span>填写模板变量</span>
-                            <small id="workspace-variable-count"></small>
-                        </button>
-                    </div>
                 </aside>
 
                 <!-- 右侧：生成面板 -->
@@ -93,11 +86,14 @@
                                 <h2>文章生成链路</h2>
                                 <p>从模板组装到最终成稿，按执行顺序检查每一步。</p>
                             </div>
-                            <button id="btn-open-onboarding" class="btn btn-outline" type="button">帮助</button>
+                            <div class="generation-flow-header-actions">
+                                <button id="btn-open-onboarding" class="btn btn-outline" type="button">帮助</button>
+                                <button id="btn-open-advanced" class="btn btn-outline" type="button">高级</button>
+                            </div>
                         </div>
                             <!-- 提示词编排模式 -->
                             <div class="panel-section prompt-mode-section flow-node" data-step="1">
-                                <div class="flow-node-label"><span>01</span><div><strong>提示词编排</strong><small>模板与变量进入生成链</small></div></div>
+                                <div class="flow-node-label"><span>01</span><div><strong>提示词编排</strong><small>模板与系统要求进入生成链</small></div></div>
                                 <div class="section-header">
                                     <div>
                                         <h3>结构化消息编排</h3>
@@ -110,9 +106,9 @@
                                 </div>
                             </div>
 
-                            <!-- 本次生成的文风参考 -->
+                            <!-- 模板级 Style Card：参与初稿提示词组装 -->
                             <div class="panel-section style-control-section flow-node" data-step="2">
-                                <div class="flow-node-label"><span>02</span><div><strong>文风参考</strong><small>选择处理方式与本地语料</small></div></div>
+                                <div class="flow-node-label"><span>02</span><div><strong>风格卡</strong><small>选择范例原文或已分析的 Style Card</small></div></div>
                                 <div class="section-header compact-header">
                                     <div>
                                         <h3>风格处理方式</h3>
@@ -130,14 +126,6 @@
                                     </label>
                                 </div>
                                 <p id="style-mode-help" class="strength-help">沿用当前范例文章拼接逻辑，不改变任何原有行为。</p>
-                                <div id="style-rag-control" class="style-rag-control" style="display:none;">
-                                    <div class="style-rag-heading">
-                                        <div><h4>文风语料</h4><p>选择本次生成使用的语料库</p></div>
-                                    </div>
-                                    <div id="style-rag-corpora-list" class="style-rag-corpora-list"></div>
-                                    <button id="btn-open-corpus-panel" class="btn btn-outline btn-sm" type="button">打开文风管理</button>
-                                    <small id="style-rag-empty-hint" class="style-rag-hint">暂无语料库，请前往「文风管理」导入风格文本</small>
-                                </div>
                                 <div class="style-control-divider"></div>
                             </div>
 
@@ -158,13 +146,33 @@
                                 <div id="article-file-status" class="file-status" hidden></div>
                             </div>
 
-                            <div class="panel-section flow-node flow-generation-node" data-step="4">
-                                <div class="flow-node-label"><span>04</span><div><strong>生成初稿</strong><small>调用当前选择的大模型 API</small></div></div>
+                            <div class="panel-section flow-node flow-generation-node" id="draft-node" data-step="4">
+                                <div class="flow-node-label"><span>04</span><div><strong>生成初稿</strong><small>调用当前选择的大模型 API</small><small id="draft-node-status" class="flow-node-status flow-node-status-busy" aria-live="polite">正在生成</small></div></div>
                                 <div class="generate-actions">
                                     <input type="text" id="article-title" class="input-text" placeholder="文章标题（可选）" style="flex:1;">
                                 </div>
                                 <div id="workspace-token-summary" class="workspace-token-summary idle">
                                     <span>Token 预算</span><strong>等待预检</strong><small>点击生成或提示词预览后显示</small>
+                                </div>
+                                <!-- 初稿正文、思维链与续写操作只在节点弹窗内展示，不占画布表面。 -->
+                                <div id="continue-hint" class="continue-hint" style="display:none;">
+                                    <span id="continue-hint-text">生成因达到长度限制而中断，文章可能不完整。</span>
+                                    <button id="btn-continue-generate" class="btn btn-outline btn-sm" type="button">继续生成</button>
+                                </div>
+                                <div id="reasoning-section" style="display:none;" class="reasoning-box">
+                                    <div class="section-header"><h4>思维链</h4></div>
+                                    <pre id="reasoning-content" class="reasoning-content"></pre>
+                                </div>
+                                <div id="first-content-section" style="display:none;">
+                                    <div class="section-header">
+                                        <h4>第一版（原始）</h4>
+                                        <div class="result-actions">
+                                            <button id="btn-open-draft-editor" class="btn btn-xs btn-primary" disabled>全屏编辑</button>
+                                            <button id="btn-copy-draft" class="btn btn-xs btn-outline">复制</button>
+                                            <button id="btn-download-draft" class="btn btn-xs btn-outline">下载</button>
+                                        </div>
+                                    </div>
+                                    <div id="first-content" class="article-content"><p class="result-placeholder">生成完成后，初稿会显示在这里。</p></div>
                                 </div>
                             </div>
 
@@ -183,57 +191,48 @@
                             </div>
 
                             <div class="panel-section flow-node" data-step="6">
-                                <div class="flow-node-label"><span>06</span><div><strong>文风校正</strong><small>本地分析偏差后决定是否重写</small></div></div>
+                                <div class="flow-node-label"><span>06</span><div><strong>风格参考</strong><small>用本地 RAG 对初稿进行二次改写</small></div></div>
                                 <div class="section-header">
-                                    <h3>严格文风重写</h3>
+                                    <h3>RAG 风格参考</h3>
                                     <label class="switch-label">
-                                        <input type="checkbox" id="strict-style-rewrite-enabled">
+                                        <input type="checkbox" id="style-reference-enabled">
                                         <span>启用</span>
                                     </label>
                                 </div>
-                                <p class="strength-help">仅在本地检测到明显文风偏差时，最多增加一次 API 重写调用。</p>
+                                <p class="strength-help">初稿完成后检索 3～5 个风格片段，再增加一次 API 改写；不会把语料片段注入初稿。</p>
+                                <div id="style-rag-control" class="style-rag-control">
+                                    <div class="style-rag-heading">
+                                        <div><h4>文风语料</h4><p>选择二次改写使用的语料库</p></div>
+                                    </div>
+                                    <div id="style-rag-corpora-list" class="style-rag-corpora-list"></div>
+                                    <button id="btn-open-corpus-panel" class="btn btn-outline btn-sm" type="button">打开文风管理</button>
+                                    <small id="style-rag-empty-hint" class="style-rag-hint">暂无语料库，请前往「文风管理」导入风格文本</small>
+                                </div>
                             </div>
 
-                            <!-- 生成结果区 -->
+                            <!-- 生成结果区（内容均随节点弹窗展示，画布表面只保留闪光提示） -->
                             <div class="panel-section result-section flow-node flow-result-node" id="result-section" data-step="7">
-                                <div class="flow-node-label"><span>07</span><div><strong>最终成稿</strong><small>查看、编辑或导出生成结果</small></div></div>
-                                <div class="section-header">
-                                    <h3>生成结果</h3>
-                                    <div class="result-actions">
-                                        <button id="btn-open-result-editor" class="btn btn-xs btn-primary" disabled>全屏编辑</button>
-                                        <button id="btn-copy-result" class="btn btn-xs btn-outline">复制</button>
-                                        <button id="btn-download-result" class="btn btn-xs btn-outline">下载</button>
-                                    </div>
-                                </div>
-                                <!-- API 调用状态：属于结果栏内部，避免与结果区域并排重叠 -->
-                                <div id="loading-overlay" class="loading-overlay" style="display:none;">
-                                    <div class="loading-spinner"></div>
-                                    <div class="loading-copy">
-                                        <strong>正在生成</strong>
-                                        <p id="loading-text">正在连接 API，准备生成...</p>
-                                    </div>
-                                </div>
-                                <!-- 思维链 -->
-                                <div id="reasoning-section" style="display:none;" class="reasoning-box">
-                                    <div class="section-header"><h4>思维链</h4></div>
-                                    <pre id="reasoning-content" class="reasoning-content"></pre>
-                                </div>
-                                <!-- 第一版 -->
-                                <div id="first-content-section">
-                                    <div class="section-header">
-                                        <h4>第一版（原始）</h4>
-                                        <span class="editable-hint">点击“全屏编辑”使用 Markdown 与局部AI</span>
-                                    </div>
-                                    <div id="first-content" class="article-content"><p class="result-placeholder">生成完成后，文章会沿着链路到达这里。</p></div>
-                                </div>
-                                <!-- 去AI味版 -->
+                                <div class="flow-node-label"><span>07</span><div><strong>最终成稿</strong><small>经自然化/风格参考后的最终版本</small><small id="final-node-status" class="flow-node-status flow-node-status-busy" aria-live="polite">正在生成</small></div></div>
+                                <!-- 语言自然化结果：启用后显示去AI味版 -->
                                 <div id="deai-content-section" style="display:none;">
                                     <div class="section-header"><h4>去AI味版</h4></div>
                                     <div id="deai-content" class="article-content"></div>
                                 </div>
+                                <!-- RAG 风格参考结果：启用后显示二次改写终稿 -->
                                 <div id="style-rewrite-content-section" style="display:none;">
-                                    <div class="section-header"><h4>严格文风终稿</h4></div>
+                                    <div class="section-header"><h4>风格参考终稿</h4></div>
                                     <div id="style-rewrite-content" class="article-content"></div>
+                                </div>
+                                <div id="final-result-area" style="display:none;">
+                                    <div class="section-header">
+                                        <h3>最终成稿</h3>
+                                        <div class="result-actions">
+                                            <button id="btn-open-result-editor" class="btn btn-xs btn-primary" disabled>全屏编辑</button>
+                                            <button id="btn-copy-result" class="btn btn-xs btn-outline">复制</button>
+                                            <button id="btn-download-result" class="btn btn-xs btn-outline">下载</button>
+                                        </div>
+                                    </div>
+                                    <div id="final-content" class="article-content"><p class="result-placeholder">启用「语言自然化」或「风格参考」后，最终成稿会显示在这里。</p></div>
                                 </div>
                             </div>
                             <div class="flow-generate-launcher canvas-generate-launcher" aria-label="文章生成操作">
@@ -288,11 +287,16 @@
                             <div id="prompt-preview-empty" class="prompt-preview-empty">
                                 <div class="preview-illustration">✦</div>
                                 <h4>生成前检查完整提示词</h4>
-                                <p>系统会将当前启用的模板、填写变量和前置文章组装在这里，方便发现遗漏。</p>
+                                <p>系统会将当前启用的模板、系统要求和前置文章组装在这里，方便发现遗漏。</p>
                                 <button id="btn-preview-prompt" class="btn btn-primary preview-main-action" type="button">生成提示词预览</button>
+                                <div id="prompt-preview-loading" class="preview-loading-hint" style="display:none;">
+                                    <span class="mini-spinner" aria-hidden="true"></span>
+                                    <span>正在拼接模板、上下文与风格卡，并估算二次风格参考预算…</span>
+                                </div>
                                 <span>不会调用 AI，也不会消耗额度</span>
                             </div>
                             <pre id="prompt-preview-content" class="code-preview" style="display:none;"></pre>
+                            <div id="prompt-preview-runtime-plan" class="prompt-preview-runtime-plan" style="display:none;"></div>
                             <div id="prompt-preview-fallback" class="prompt-preview-fallback" style="display:none;"></div>
                             <div id="prompt-preview-meta" class="prompt-preview-meta" style="display:none;"></div>
                             <div id="style-selection-panel" class="style-selection-panel" style="display:none;"></div>
@@ -330,6 +334,8 @@
                         <button id="btn-close-editor" class="editor-exit-btn" type="button">← 退出编辑</button>
                         <h3 id="editor-title">编辑模板</h3>
                         <div class="editor-header-actions">
+                            <button id="btn-open-community-prompts" class="btn btn-outline" type="button"
+                                title="使用系统默认浏览器打开 AiShort 社区提示词库">社区提示词 ↗</button>
                             <button id="btn-open-style-card" class="btn btn-outline" type="button" style="display:none;">风格卡</button>
                             <button id="btn-version-history" class="btn btn-outline">版本历史</button>
                             <button id="btn-save-template" class="btn btn-primary">保存模板</button>
@@ -357,13 +363,12 @@
                             <button type="button" data-md-prefix="- " title="列表">• 列表</button>
                             <button type="button" data-md-prefix="> " title="引用">❝ 引用</button>
                             <button type="button" data-md-wrap="`" title="行内代码">&lt;/&gt;</button>
-                            <span class="toolbar-tip">使用 <code>{{变量名}}</code> 标记可填写位置</span>
-                            <button id="btn-toggle-markdown-preview" type="button" class="preview-toggle active">隐藏预览</button>
+                            <span class="toolbar-tip">支持标题、列表、引用等 Markdown 格式</span>
                         </div>
                         <div class="markdown-workspace">
                             <div class="markdown-editor-pane">
                                 <textarea id="edit-template-content" spellcheck="false"
-                                    placeholder="在这里编写模板内容，支持 Markdown 格式。&#10;&#10;例如：&#10;# 人物设定&#10;主角名为 {{主角姓名}}，性格是 {{性格}}。"></textarea>
+                                    placeholder="在这里编写模板内容，支持 Markdown 格式。&#10;&#10;例如：&#10;# 人物设定&#10;主角名为林舟，性格沉静而敏锐。"></textarea>
                             </div>
                             <div class="markdown-preview-pane" id="markdown-preview">
                                 <div class="markdown-preview-empty">Markdown 预览会显示在这里</div>
@@ -382,6 +387,11 @@
                             <button id="btn-close-style-card" class="btn-icon" type="button" aria-label="关闭风格卡">✕</button>
                         </div>
                         <div class="style-card-panel-body">
+                            <div id="style-card-analysis-loading" class="preview-loading-hint"
+                                role="status" aria-live="polite" style="display:none;">
+                                <span class="mini-spinner" aria-hidden="true"></span>
+                                <span>正在分析当前模板的语言风格，请稍候…</span>
+                            </div>
                             <div id="style-card-empty" class="style-card-empty">
                                 <span>析</span>
                                 <h4>将模板转换成可执行风格规则</h4>
@@ -441,7 +451,11 @@
                         <h2>文风管理</h2>
                         <p>集中管理风格语料、可选语义辅助和 Style RAG 检索调试。工作台只负责选择本次生成使用的文风。</p>
                     </div>
-                    <button id="btn-refresh-corpora" class="btn btn-outline" type="button">刷新</button>
+                    <div class="style-management-actions">
+                        <button id="btn-install-embedding-model" class="btn btn-outline" type="button"
+                            title="下载步骤：连接模型仓库 → 下载并校验 bge-small-zh-v1.5 ONNX 文件 → 安装到用户模型目录。已安装时会直接提示，无需重复下载。">下载本地 ONNX 语义向量引擎</button>
+                        <button id="btn-refresh-corpora" class="btn btn-outline" type="button">刷新</button>
+                    </div>
                 </header>
 
                 <div class="style-management-grid">
@@ -547,7 +561,6 @@
                 <span id="result-editor-save-state">尚未修改</span>
             </div>
             <div class="editor-header-actions">
-                <button id="btn-toggle-result-preview" class="btn btn-outline" type="button">隐藏预览</button>
                 <button id="btn-save-result-edit" class="btn btn-primary" type="button">保存修改版</button>
             </div>
         </header>
@@ -632,6 +645,26 @@
         </section>
     </div>
 
+    <!-- 本地 ONNX 安装说明：下载按钮只检查状态并给出显式步骤，不静默安装大型依赖。 -->
+    <div id="embedding-install-help-modal" class="modal-backdrop" hidden>
+        <section class="embedding-progress-dialog" role="dialog" aria-modal="true"
+            aria-labelledby="embedding-install-help-title">
+            <div aria-hidden="true" style="color:var(--jade);font-size:32px;">↓</div>
+            <h2 id="embedding-install-help-title">安装本地 ONNX 语义向量引擎</h2>
+            <p>当前环境尚未完整安装。请在项目根目录打开 PowerShell，依次执行：</p>
+            <pre class="code-preview">powershell -ExecutionPolicy Bypass -File scripts\install-local-embedding.ps1
+.\.venv\Scripts\python scripts\verify_local_embedding.py</pre>
+            <div class="workflow-node-explanation" style="margin:16px 0 0;text-align:left;">
+                <strong>当前检查结果</strong>
+                <p>ONNX Runtime：<span id="embedding-install-runtime-state">检查中</span><br>
+                    模型文件：<span id="embedding-install-files-state">检查中</span><br>
+                    安装目录：<span id="embedding-install-model-dir">检查中</span></p>
+            </div>
+            <small>安装过程会连接官方模型仓库。模型保存在用户 models 目录，不会写入 SQLite 或 Git。</small>
+            <button id="btn-close-embedding-install-help" class="btn btn-primary" type="button">我知道了</button>
+        </section>
+    </div>
+
     <!-- 每次进入应用时展示的分页帮助 -->
     <div id="onboarding-backdrop" class="onboarding-backdrop" hidden>
         <section id="onboarding-dialog" class="onboarding-dialog" role="dialog" aria-modal="true"
@@ -655,21 +688,32 @@
         </section>
     </div>
 
-    <!-- 工作台模板变量填写 -->
-    <div id="workspace-variables-backdrop" class="modal-backdrop workspace-variables-backdrop" hidden>
-        <section class="workspace-variables-modal" role="dialog" aria-modal="true"
-            aria-labelledby="workspace-variables-title">
-            <header class="modal-header">
+    <!-- 高级模型参数调试（点击「高级」按钮弹出；结构、打开与关闭动画与「帮助」完全一致） -->
+    <div id="advanced-params-backdrop" class="onboarding-backdrop" hidden>
+        <section id="advanced-params-dialog" class="onboarding-dialog" role="dialog" aria-modal="true"
+            aria-labelledby="advanced-params-title">
+            <header class="onboarding-header">
                 <div>
-                    <h2 id="workspace-variables-title">填写模板变量</h2>
-                    <p>每个变量只填写一次；相同名称会同时用于列出的模板。</p>
+                    <span>ADVANCED MODEL PARAMS</span>
+                    <h2 id="advanced-params-title">高级模型参数</h2>
+                    <p>统一调节采样参数；悬停参数旁「?」查看说明，当前服务商不支持的参数会明确提示。</p>
                 </div>
-                <button id="btn-close-workspace-variables" class="btn-icon" type="button" aria-label="关闭模板变量">×</button>
+                <button id="btn-close-advanced" class="btn-icon" type="button" aria-label="关闭高级参数">×</button>
             </header>
-            <div id="workspace-variables-list" class="workspace-variables-list"></div>
-            <footer class="modal-footer">
-                <small>内容仅保存在当前设备，不包含 API 密钥。</small>
-                <button id="btn-finish-workspace-variables" class="btn btn-primary" type="button">完成</button>
+            <div id="advanced-params-body" class="onboarding-page">
+                <div class="advanced-params-head">
+                    <strong>采样参数</strong>
+                    <button id="btn-reset-advanced" class="btn btn-xs btn-outline" type="button">恢复默认</button>
+                </div>
+                <p class="advanced-params-tip">调整会随本次生成请求生效；未调整的参数保持服务端默认。</p>
+                <p id="advanced-provider-note" class="advanced-params-tip"></p>
+                <div id="advanced-params-list" class="advanced-params-list"></div>
+            </div>
+            <footer class="onboarding-footer">
+                <span>切换服务商后，不支持的参数会自动禁用</span>
+                <div class="onboarding-actions">
+                    <button id="btn-close-advanced-confirm" class="btn btn-primary" type="button">完成</button>
+                </div>
             </footer>
         </section>
     </div>

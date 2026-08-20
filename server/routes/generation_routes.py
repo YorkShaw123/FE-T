@@ -15,6 +15,7 @@ from services.generation_service import (
 )
 from services.generation.records import delete_all_records
 from services.errors import GenerationError, friendly_error_message
+from services.llm_adapter import LLMAdapter
 from services.operation_guard import acquire_model_operation, release_model_operation
 from config import Config
 from routes.support.document_text import extract_uploaded_text
@@ -43,12 +44,13 @@ def extract_article_text():
 
 @generation_bp.route('/models', methods=['GET'])
 def get_models():
-    """获取可用模型列表"""
+    """获取可用模型列表（含各厂商采样参数能力说明，供高级参数面板展示）"""
     providers = {}
     for key, provider_config in Config.LLM_PROVIDERS.items():
         providers[key] = {
             'name': provider_config['name'],
             'models': provider_config['models'],
+            'sampling': LLMAdapter.describe(key, provider_config),
         }
     return jsonify({
         'success': True,
@@ -140,7 +142,6 @@ def generate_stream():
     流式生成文章（Server-Sent Events）
     前端通过 ReadableStream 接收逐字输出
     """
-    operation_acquired = False
     try:
         data = request.get_json()
         if not data:
@@ -150,14 +151,23 @@ def generate_stream():
         if not generation_request.api_key.strip():
             return jsonify({'success': False, 'error': '请输入API密钥'}), 400
 
-        acquire_model_operation()
-        operation_acquired = True
-        # 获取流式生成器
-        stream_gen = generate_article(**generation_request.generation_kwargs(stream=True))
-
         def sse_events():
-            """生成 SSE 格式的事件流"""
+            """先建立 SSE 连接，再执行可能较慢的 RAG / Prompt 准备。"""
+            operation_acquired = False
+            stream_gen = None
             try:
+                # 初稿只组装模板与 Style Card；RAG 已移动到初稿后的 06 风格参考阶段。
+                preparing_stage = 'prompt_preparing'
+                yield (
+                    'event: status\n'
+                    f'data: {json.dumps({"type": "status", "data": preparing_stage}, ensure_ascii=False)}\n\n'
+                )
+
+                acquire_model_operation()
+                operation_acquired = True
+                stream_gen = generate_article(
+                    **generation_request.generation_kwargs(stream=True)
+                )
                 for event in stream_gen:
                     event_type = event.get('type', 'content')
                     if event_type == 'complete':
@@ -167,6 +177,15 @@ def generate_stream():
                             'reasoning_content': event.get('reasoning_content', ''),
                             'first_content': event.get('first_content', ''),
                             'deai_content': event.get('deai_content', ''),
+                            'style_rewrite_content': event.get('style_rewrite_content', ''),
+                            'style_reference_content': event.get('style_reference_content', ''),
+                            'style_reference_metadata': event.get('style_reference_metadata') or {},
+                            'style_reference_status': event.get('style_reference_status', 'disabled'),
+                            'final_content': event.get('final_content', ''),
+                            'finish_reason': event.get('finish_reason'),
+                            'truncated': bool(event.get('truncated')),
+                            'reasoning_fallback': bool(event.get('reasoning_fallback')),
+                            'sampling_dropped': event.get('sampling_dropped') or [],
                         }
                         yield f"event: complete\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
                     elif event_type == 'error':
@@ -177,15 +196,33 @@ def generate_stream():
                         yield f"event: error\ndata: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
                     else:
                         event_data = event.get('data', '')
-                        yield f"event: {event_type}\ndata: {json.dumps({'type': event_type, 'data': event_data}, ensure_ascii=False)}\n\n"
+                        event_payload = {'type': event_type, 'data': event_data}
+                        if event.get('reason'):
+                            event_payload['reason'] = event['reason']
+                        if event.get('details'):
+                            event_payload['details'] = event['details']
+                        yield (
+                            f"event: {event_type}\n"
+                            f"data: {json.dumps(event_payload, ensure_ascii=False)}\n\n"
+                        )
 
                 # 最终完成
                 yield "event: done\ndata: {}\n\n"
+            except Exception as exc:
+                error_payload = {
+                    'type': 'error',
+                    'data': friendly_error_message(exc),
+                }
+                yield (
+                    'event: error\n'
+                    f'data: {json.dumps(error_payload, ensure_ascii=False)}\n\n'
+                )
             finally:
-                close_stream = getattr(stream_gen, 'close', None)
+                close_stream = getattr(stream_gen, 'close', None) if stream_gen else None
                 if callable(close_stream):
                     close_stream()
-                release_model_operation()
+                if operation_acquired:
+                    release_model_operation()
 
         return Response(
             stream_with_context(sse_events()),
@@ -198,12 +235,8 @@ def generate_stream():
         )
 
     except GenerationError as e:
-        if operation_acquired:
-            release_model_operation()
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
-        if operation_acquired:
-            release_model_operation()
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': friendly_error_message(e)}), 500

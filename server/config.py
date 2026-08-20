@@ -61,6 +61,8 @@ class Config:
             'name': 'DeepSeek（深度求索）',
             'base_url': 'https://api.deepseek.com',
             'thinking_protocol': 'thinking_object_with_effort',
+            'sampling_params': ('temperature', 'top_p', 'max_tokens'),
+            'sampling_note': '思考模式下 temperature 与 top_p 不生效；frequency/presence penalty 已被官方废弃。',
             'models': [
                 {
                     'id': 'deepseek-v4-flash',
@@ -83,6 +85,7 @@ class Config:
         'openai': {
             'name': 'OpenAI',
             'base_url': 'https://api.openai.com/v1',
+            'sampling_params': ('temperature', 'top_p', 'max_tokens', 'frequency_penalty', 'presence_penalty'),
             'models': [
                 {
                     'id': 'gpt-4.1',
@@ -111,6 +114,8 @@ class Config:
             'name': '硅基流动（Kimi / Embedding）',
             'base_url': 'https://api.siliconflow.com/v1',
             'thinking_protocol': 'enable_thinking',
+            'sampling_params': ('temperature', 'top_p', 'max_tokens'),
+            'sampling_note': '不同托管模型的参数能力可能不同；当前仅开放兼容性稳定的通用参数。',
             'models': [
                 {
                     'id': 'moonshotai/Kimi-K2.6',
@@ -158,6 +163,8 @@ class Config:
             'name': 'Kimi（月之暗面官方）',
             'base_url': 'https://api.moonshot.cn/v1',
             'thinking_protocol': 'thinking_object',
+            'sampling_params': ('temperature', 'top_p', 'max_tokens'),
+            'sampling_note': '思考模型可能忽略部分随机采样参数，以服务商实际模型能力为准。',
             'models': [
                 {
                     'id': 'kimi-k2.6',
@@ -180,6 +187,7 @@ class Config:
         'qwen': {
             'name': '通义千问（阿里云百炼）',
             'base_url': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+            'sampling_params': ('temperature', 'top_p', 'max_tokens', 'frequency_penalty', 'presence_penalty'),
             'models': [
                 {
                     'id': 'qwen-plus',
@@ -201,6 +209,11 @@ class Config:
             'name': '智谱 GLM',
             'base_url': 'https://open.bigmodel.cn/api/paas/v4',
             'thinking_protocol': 'thinking_object',
+            'sampling_params': ('temperature', 'top_p', 'max_tokens'),
+            'sampling_param_overrides': {
+                'temperature': {'min': 0.01, 'max': 1, 'default': 1, 'step': 0.01},
+                'top_p': {'min': 0.01, 'max': 1, 'default': 0.95, 'step': 0.01},
+            },
             'models': [
                 {
                     'id': 'glm-4.7',
@@ -224,6 +237,8 @@ class Config:
             'name': 'Google Gemini（官方）',
             'base_url': 'https://generativelanguage.googleapis.com/v1beta/openai',
             'thinking_protocol': 'gemini_effort',
+            'sampling_params': ('temperature', 'top_p', 'max_tokens', 'frequency_penalty', 'presence_penalty'),
+            'sampling_note': 'Gemini 的建议采样范围随具体模型变化；复杂推理任务通常建议保留模型默认值。',
             'models': [
                 {
                     'id': 'gemini-2.5-pro',
@@ -246,6 +261,7 @@ class Config:
         'xai': {
             'name': 'xAI Grok',
             'base_url': 'https://api.x.ai/v1',
+            'sampling_params': ('temperature', 'top_p', 'max_tokens', 'frequency_penalty', 'presence_penalty'),
             'models': [
                 {
                     'id': 'grok-4.3',

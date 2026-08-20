@@ -8,7 +8,7 @@ from database import db
 from database.models import PromptTemplate, StyleExcerpt, StyleProfile
 from services.api_client import LLMClient
 from services.errors import GenerationError
-from services.style_profile_service import _extract_json_object, style_source_hash
+from services.style_profile_service import _extract_response_json, style_source_hash
 
 
 SCENE_TYPES = {'dialogue', 'action', 'psychology', 'environment', 'transition', 'narration', 'mixed'}
@@ -120,7 +120,7 @@ def _label_batches(chunks, client, model):
             thinking_enabled=False,
             max_tokens=2500,
         )
-        payload = _extract_json_object(response.get('content', ''))
+        payload = _extract_response_json(response)
         items = payload.get('items', []) if isinstance(payload, dict) else []
         if not isinstance(items, list):
             raise GenerationError('片段标签结果缺少 items 数组')

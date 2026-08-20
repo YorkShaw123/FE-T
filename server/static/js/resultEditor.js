@@ -64,7 +64,8 @@ export async function openResultEditor() {
         toast('文章尚未完整生成，暂不能进入编辑', 'warning');
         return;
     }
-    let base = getArticleText($('#style-rewrite-content'))
+    let base = getArticleText($('#final-content'))
+        || getArticleText($('#style-rewrite-content'))
         || getArticleText($('#deai-content')) || getArticleText($('#first-content'));
     let edited = '';
     let history = [];
@@ -100,6 +101,7 @@ export async function openResultEditor() {
 }
 
 safeBind('#btn-open-result-editor', 'click', openResultEditor);
+safeBind('#btn-open-draft-editor', 'click', openResultEditor);
 safeBind('#btn-close-result-editor', 'click', () => {
     if (resultEditState.dirty && !confirm('修改版尚未保存，确定退出吗？')) return;
     $('#result-editor-panel').style.display = 'none';
@@ -270,8 +272,4 @@ $$('.result-editor-toolbar button[data-result-md-prefix], .result-editor-toolbar
         editor.focus();
         editor.dispatchEvent(new Event('input', { bubbles: true }));
     });
-});
-safeBind('#btn-toggle-result-preview', 'click', event => {
-    const hidden = $('#result-editor-panel').classList.toggle('preview-hidden');
-    event.currentTarget.textContent = hidden ? '显示预览' : '隐藏预览';
 });

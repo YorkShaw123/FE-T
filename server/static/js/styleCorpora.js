@@ -212,6 +212,7 @@ function openIndexProgress() {
     modal.hidden = false;
     modal.querySelector('.embedding-progress-dialog')?.classList.remove('done');
     $('#btn-close-embedding-progress').hidden = true;
+    $('#embedding-progress-title').textContent = '正在向量化语料库';
     renderIndexProgress({
         status: 'running', completed: 0, total: 0, percent: 0,
         elapsed_seconds: 0, estimated_remaining_seconds: null,
@@ -242,6 +243,25 @@ function formatDuration(seconds) {
     const minutes = Math.floor(value / 60);
     const remainder = value % 60;
     return remainder ? `${minutes} 分 ${remainder} 秒` : `${minutes} 分钟`;
+}
+
+// ==================== 本地 ONNX 模型状态与安装说明 ====================
+
+async function installEmbeddingModel() {
+    try {
+        const { data } = await api('/api/style-corpora/embedding-model/status');
+        if (data.installed) {
+            toast('本地 ONNX 语义向量引擎已安装，可直接向量化');
+            return;
+        }
+        const modal = $('#embedding-install-help-modal');
+        $('#embedding-install-model-dir').textContent = data.model_dir || '用户数据目录下的 models 文件夹';
+        $('#embedding-install-runtime-state').textContent = data.runtime_available ? '已安装' : '尚未安装';
+        $('#embedding-install-files-state').textContent = data.model_files_ready ? '已就绪' : '尚未安装';
+        modal.hidden = false;
+    } catch (e) {
+        toast('检查本地模型失败：' + e.message, 'error');
+    }
 }
 
 async function clearCorpus(corpusId) {
@@ -389,6 +409,10 @@ function formatScore(value) {
 
 safeBind('#btn-open-corpus-panel', 'click', openStyleManagement);
 safeBind('#btn-refresh-corpora', 'click', loadCorporaList);
+safeBind('#btn-install-embedding-model', 'click', installEmbeddingModel);
+safeBind('#btn-close-embedding-install-help', 'click', () => {
+    $('#embedding-install-help-modal').hidden = true;
+});
 safeBind('#btn-create-corpus', 'click', createCorpus);
 safeBind('#corpus-new-name', 'keydown', event => {
     if (event.key === 'Enter') createCorpus();

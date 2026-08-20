@@ -5,99 +5,6 @@
 import { $, $$, api, toast, escapeHtml, safeBind } from './utils.js';
 import { state, categoryConfig } from './state.js';
 
-const VARIABLE_VALUES_KEY = 'flora_workspace_variable_values_v1';
-
-function loadStoredVariableValues() {
-    try {
-        const value = JSON.parse(localStorage.getItem(VARIABLE_VALUES_KEY) || '{}');
-        return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-    } catch {
-        return {};
-    }
-}
-
-/** 收集工作台变量值，供提示词预览和正式生成共用。 */
-export function getWorkspaceVariableValues() {
-    const values = loadStoredVariableValues();
-    $$('#workspace-variables-list [data-variable]').forEach(input => {
-        values[input.dataset.variable] = input.value;
-    });
-    return values;
-}
-
-function renderWorkspaceVariables(grouped) {
-    const section = $('#workspace-variables-section');
-    const list = $('#workspace-variables-list');
-    const count = $('#workspace-variable-count');
-    if (!section || !list) return;
-    const variableTemplates = new Map();
-    Object.values(grouped).flat().forEach(template => {
-        if (template.is_active === false) return;
-        let names = template.variables || [];
-        if (typeof names === 'string') {
-            try { names = JSON.parse(names); } catch { names = []; }
-        }
-        (Array.isArray(names) ? names : []).forEach(name => {
-            const normalized = String(name || '').trim();
-            if (!normalized) return;
-            if (!variableTemplates.has(normalized)) variableTemplates.set(normalized, new Set());
-            variableTemplates.get(normalized).add(String(template.name || '未命名模板'));
-        });
-    });
-    const variables = Array.from(variableTemplates.entries());
-    section.hidden = variables.length === 0;
-    if (count) count.textContent = variables.length ? `${variables.length} 项` : '';
-    if (!variables.length) {
-        list.innerHTML = '';
-        closeWorkspaceVariables();
-        return;
-    }
-    const stored = loadStoredVariableValues();
-    list.innerHTML = variables.map(([name, templateNames]) => `
-        <label class="workspace-variable-item">
-            <span class="workspace-variable-name">{{${escapeHtml(name)}}}</span>
-            <small class="workspace-variable-source">所在模板：${Array.from(templateNames).map(escapeHtml).join('、')}</small>
-            <input class="input-text" type="text" data-variable="${escapeHtml(name)}"
-                value="${escapeHtml(stored[name] || '')}" placeholder="填写 ${escapeHtml(name)}">
-        </label>
-    `).join('');
-    $$('[data-variable]', list).forEach(input => {
-        input.addEventListener('input', () => {
-            const values = loadStoredVariableValues();
-            values[input.dataset.variable] = input.value;
-            localStorage.setItem(VARIABLE_VALUES_KEY, JSON.stringify(values));
-        });
-    });
-}
-
-function openWorkspaceVariables() {
-    const backdrop = $('#workspace-variables-backdrop');
-    if (!backdrop || $('#workspace-variables-section')?.hidden) return;
-    backdrop.hidden = false;
-    document.body.classList.add('workspace-variables-open');
-    $('#workspace-variables-list [data-variable]')?.focus();
-}
-
-function closeWorkspaceVariables() {
-    const backdrop = $('#workspace-variables-backdrop');
-    if (!backdrop || backdrop.hidden) return;
-    backdrop.hidden = true;
-    document.body.classList.remove('workspace-variables-open');
-    $('#btn-open-workspace-variables')?.focus();
-}
-
-safeBind('#btn-open-workspace-variables', 'click', openWorkspaceVariables);
-safeBind('#btn-close-workspace-variables', 'click', closeWorkspaceVariables);
-safeBind('#btn-finish-workspace-variables', 'click', closeWorkspaceVariables);
-$('#workspace-variables-backdrop')?.addEventListener('click', event => {
-    if (event.target.id === 'workspace-variables-backdrop') closeWorkspaceVariables();
-});
-document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !$('#workspace-variables-backdrop')?.hidden) {
-        closeWorkspaceVariables();
-    }
-});
-
 /** 加载并渲染工作台模板分组 */
 export async function loadWorkspaceTemplates() {
     const container = $('#template-panel-body');
@@ -110,7 +17,6 @@ export async function loadWorkspaceTemplates() {
             Object.fromEntries(Object.entries(data.data).map(([k, v]) => [k, v.length])));
         state.groupedTemplates = data.data;
         renderWorkspaceTemplates(data.data);
-        renderWorkspaceVariables(data.data);
     } catch (e) {
         console.error('[Flora] 加载模板失败:', e);
         container.innerHTML = `<div style="padding:20px;text-align:center;">
@@ -146,8 +52,7 @@ function renderWorkspaceTemplates(grouped) {
         visible.forEach(tpl => {
             const active = tpl.is_active !== false;
             const description = String(tpl.description || '').trim();
-            const preview = description
-                || (tpl.content || '').replace(/\{\{.*?\}\}/g, '___').substring(0, 40);
+            const preview = description || (tpl.content || '').substring(0, 40);
 
             html += `<div class="template-card ${active ? 'active' : ''}" data-id="${tpl.id}" data-cat="${catId}">
                 <span class="toggle-dot" data-action="toggle" title="点击切换启用/禁用"></span>
@@ -167,6 +72,7 @@ function renderWorkspaceTemplates(grouped) {
     }
 
     container.innerHTML = html;
+    document.dispatchEvent(new CustomEvent('flora:workflow-input-change'));
 
     // 绑定折叠事件
     $$('.category-group-header', container).forEach(header => {
@@ -208,7 +114,6 @@ async function toggleTemplateActive(card) {
         }
         // 重新渲染面板以更新开关状态和计数
         renderWorkspaceTemplates(state.groupedTemplates);
-        renderWorkspaceVariables(state.groupedTemplates);
     } catch (e) {
         toast('切换失败: ' + e.message, 'error');
     }

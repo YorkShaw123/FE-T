@@ -1,17 +1,13 @@
 """
 提示词组装器
-负责将多个模板按分类拼接成统一的提示词，并支持变量插值
+负责将多个模板按分类拼接成统一的提示词
 """
-import re
 import json
 from sqlalchemy import case
 from sqlalchemy.orm import aliased
 from database.models import PromptTemplate, StyleProfile
 from database import db
 
-
-# 变量占位符正则：匹配 {{variable_name}} 或 {{变量名}}
-VARIABLE_PATTERN = re.compile(r'\{\{(.+?)\}\}')
 
 STYLE_STRENGTH_CONSTRAINTS = {
     'medium': (
@@ -43,27 +39,8 @@ SCENE_FALLBACK_QUERIES = {
 }
 
 
-def extract_variables(text):
-    """从文本中提取所有变量名"""
-    return list(set(VARIABLE_PATTERN.findall(text)))
-
-
-def fill_variables(text, values):
-    """
-    用给定值填充模板变量
-    :param text: 包含 {{var}} 占位符的文本
-    :param values: dict，变量名到值的映射
-    :return: 填充后的文本
-    """
-    def replacer(match):
-        var_name = match.group(1).strip()
-        return values.get(var_name, match.group(0))
-    return VARIABLE_PATTERN.sub(replacer, text)
-
-
 def assemble_prompt(
     templates,
-    variable_values=None,
     custom_prefix='',
     custom_suffix='',
     previous_article='',
@@ -91,15 +68,11 @@ def assemble_prompt(
     - constraint -> 更多约束
 
     :param templates: PromptTemplate 对象列表
-    :param variable_values: dict，变量名到值的映射
     :param custom_prefix: 自定义前缀
     :param custom_suffix: 自定义后缀
     :param previous_article: 前置文章/已写内容（续写时传入）
     :return: str, 组装后的完整提示词
     """
-    if variable_values is None:
-        variable_values = {}
-
     # 分类排序映射
     category_order = {
         'background': 1,
@@ -145,8 +118,7 @@ def assemble_prompt(
         parts.append(f'\n{title}\n')
 
         for i, tpl in enumerate(sections):
-            content = fill_variables(tpl.content, variable_values)
-            parts.append(content.strip())
+            parts.append(tpl.content.strip())
             if i < len(sections) - 1:
                 parts.append('')
 
@@ -158,8 +130,7 @@ def assemble_prompt(
     if emphasized_style_templates:
         parts.append('\n【重点范例文章/参考风格】\n')
         for tpl in emphasized_style_templates:
-            content = fill_variables(tpl.content, variable_values)
-            parts.append(content.strip())
+            parts.append(tpl.content.strip())
             parts.append(STYLE_STRENGTH_CONSTRAINTS[style_strength])
 
     if custom_suffix:
@@ -170,7 +141,6 @@ def assemble_prompt(
 
 def assemble_structured_messages(
     templates,
-    variable_values=None,
     custom_prefix='',
     custom_suffix='',
     previous_article='',
@@ -179,12 +149,11 @@ def assemble_structured_messages(
     scene_type='auto',
 ):
     """按消息边界组装提示词；不改变旧版 ``assemble_prompt`` 的行为。"""
-    variable_values = variable_values or {}
     style_strength = style_strength if style_strength in {'light', 'medium', 'strict'} else 'light'
     grouped = {key: [] for key in ('background', 'character', 'plot', 'example', 'constraint')}
     for tpl in templates:
         if tpl.is_active and tpl.category in grouped:
-            grouped[tpl.category].append(fill_variables(tpl.content, variable_values).strip())
+            grouped[tpl.category].append(tpl.content.strip())
 
     system_parts = [system_prompt.strip()]
     if custom_prefix and custom_prefix.strip():
@@ -240,7 +209,6 @@ def assemble_structured_messages(
 
 def assemble_style_pipeline_messages(
     templates,
-    variable_values=None,
     custom_prefix='',
     custom_suffix='',
     previous_article='',
@@ -259,7 +227,6 @@ def assemble_style_pipeline_messages(
     """
     from services.style_profile_service import style_source_hash
 
-    variable_values = variable_values or {}
     active = [tpl for tpl in templates if tpl.is_active]
     example_templates = [tpl for tpl in active if tpl.category == 'example']
     example_ids = [tpl.id for tpl in example_templates]
@@ -307,7 +274,7 @@ def assemble_style_pipeline_messages(
     grouped = {key: [] for key in ('background', 'character', 'plot', 'constraint')}
     for template in active:
         if template.category in grouped:
-            grouped[template.category].append(fill_variables(template.content, variable_values).strip())
+            grouped[template.category].append(template.content.strip())
 
     # 检索上下文：剧情设定 + 前置文章（局部）；两者皆空时用场景兜底查询
     query_text = '\n'.join(grouped['plot']) + '\n' + (previous_article or '')[-1200:]
@@ -365,7 +332,7 @@ def assemble_style_pipeline_messages(
         metadata['selection_mode'] = 'style_rag'
         metadata['resolved_scene_type'] = scene_type
         for index, excerpt in enumerate(rag_examples, start=1):
-            excerpt_content = fill_variables(excerpt['content'], variable_values)
+            excerpt_content = excerpt['content']
             reasons = '、'.join(excerpt['reasons']) or '综合检索'
             examples.append(
                 f'<example index="{index}" source="{excerpt["corpus_name"] or "风格语料库"}" '
@@ -397,7 +364,7 @@ def assemble_style_pipeline_messages(
         if selected:
             metadata['selection_mode'] = 'scene_retrieval'
             for index, excerpt in enumerate(selected, start=1):
-                excerpt_content = fill_variables(excerpt['content'], variable_values)
+                excerpt_content = excerpt['content']
                 reasons = '、'.join(excerpt['reasons']) or '综合评分'
                 examples.append(
                     f'<example index="{index}" template="{excerpt["template_name"]}" '
@@ -415,7 +382,7 @@ def assemble_style_pipeline_messages(
             # 尚未生成片段时仍保留第一里程碑的少量代表性文本回退。
             metadata['selection_mode'] = 'representative_fallback'
             for index, (template, _, _) in enumerate(usable, start=1):
-                excerpt_content = fill_variables(template.content, variable_values).strip()[:1600]
+                excerpt_content = template.content.strip()[:1600]
                 examples.append(
                     f'<example index="{index}" template="{template.name}" '
                     f'selection_reason="尚未建立片段库，使用代表性开头">\n'
@@ -515,13 +482,3 @@ def get_templates_by_category(active_only=True):
             grouped[tpl.category].append(tpl.to_dict())
 
     return grouped
-
-
-def get_all_variables(templates):
-    """收集所有模板中的变量"""
-    all_vars = set()
-    for tpl in templates:
-        if tpl.is_active:
-            vars_list = json.loads(tpl.variables) if tpl.variables else []
-            all_vars.update(vars_list)
-    return sorted(list(all_vars))

@@ -1,6 +1,6 @@
 """
 提示词模板服务
-提供模板的 CRUD、版本控制、变量提取、导入导出等功能
+提供模板的 CRUD、版本控制、导入导出等功能
 """
 import json
 from datetime import datetime, timezone
@@ -8,7 +8,6 @@ from sqlalchemy import case
 from sqlalchemy.orm import aliased
 from database import db
 from database.models import PromptTemplate
-from services.prompt_assembler import extract_variables
 
 
 class TemplateServiceError(Exception):
@@ -46,15 +45,11 @@ def create_template(
     if not content or not content.strip():
         raise TemplateServiceError('模板内容不能为空')
 
-    # 自动提取变量
-    variables = extract_variables(content)
-
     template = PromptTemplate(
         name=name.strip(),
         category=category,
         content=content.strip(),
         description=description.strip(),
-        variables=json.dumps(variables, ensure_ascii=False),
         sort_order=sort_order,
         style_strength=normalize_style_strength(style_strength),
         version=1,
@@ -126,10 +121,6 @@ def update_template(template_id, **kwargs):
             category=category or template.category,
             content=content.strip() if content is not None else template.content,
             description=(description if description is not None else template.description).strip(),
-            variables=json.dumps(
-                extract_variables(content.strip() if content is not None else template.content),
-                ensure_ascii=False,
-            ),
             style_strength=style_strength,
             sort_order=sort_order if sort_order is not None else template.sort_order,
             is_active=True,
@@ -237,7 +228,6 @@ def restore_version(template_id, version_id):
         category=target.category,
         content=target.content,
         description=target.description,
-        variables=target.variables,
         style_strength=target.style_strength or 'light',
         sort_order=target.sort_order,
         is_active=True,
@@ -368,10 +358,6 @@ def import_templates(json_data):
                 description=tpl_data.get('description', ''),
                 style_strength=normalize_style_strength(
                     tpl_data.get('style_strength', 'light')
-                ),
-                variables=json.dumps(
-                    extract_variables(tpl_data.get('content', '')),
-                    ensure_ascii=False,
                 ),
                 is_active=True,
                 version=1,

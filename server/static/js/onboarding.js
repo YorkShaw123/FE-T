@@ -2,52 +2,42 @@ import { $ } from './utils.js';
 
 const PAGES = [
     {
-        title: '先认识工作台',
+        title: '欢迎来到 Flora Editor',
         html: `
-            <p>工作台把一次文章生成画成一条流程。你只需要从左向右看：</p>
+            <p><strong>Flora Editor 会把你准备的人物、世界、剧情和文风要求整理成一条清楚的生成链，陪你把一个想法写成可以继续打磨的文章。</strong></p>
+            <p>你不需要先弄懂复杂的提示词工程。准备好想写的内容，选择模型，Flora 会在每一步告诉你正在做什么。</p>`,
+    },
+    {
+        title: '第一次生成，只要三步',
+        html: `
             <ol>
-                <li><strong>提示词编排</strong>：决定怎样把模板和要求交给模型。</li>
-                <li><strong>文风参考</strong>：选择原文范例或本地文风语料。</li>
-                <li><strong>上下文输入</strong>：放入已经写好的前文，保持剧情连续。</li>
-                <li><strong>生成初稿</strong>：检查标题和 Token 预算。</li>
-                <li><strong>语言自然化、文风校正</strong>：都是可选的后处理。</li>
-                <li><strong>最终成稿</strong>：查看、编辑、复制或下载文章。</li>
-            </ol>`,
+                <li>到<strong>模板管理</strong>写下人物、背景、剧情或其他要求，并保存模板。</li>
+                <li>回到工作台，在左侧开启本次要用的模板；在顶栏选择模型并输入对应平台的 API 密钥。</li>
+                <li>点击<strong>生成文章</strong>。标题、提示词编排、风格卡和前置文章都可以按需要再补充。</li>
+            </ol>
+            <p>模板就是可重复使用的写作说明。内容写清楚即可，不需要特殊占位符。</p>`,
     },
     {
-        title: '模板管理是做什么的？',
+        title: '看懂工作台生成链',
         html: `
-            <p>模板就是可以重复使用的提示词。人物、背景、剧情、范例文章和其他约束可以分开保存。</p>
-            <p>模板中的 <code>{{变量名}}</code> 会在工作台变成输入项。工作台左侧可以直接开启或关闭某个模板。</p>
-            <p>新手建议：先准备一个人物模板、一个背景模板和一个剧情模板，再回到工作台生成。</p>`,
+            <p><strong>01 提示词编排、02 风格卡、03 上下文输入</strong>共同准备初稿所需信息，然后进入<strong>04 生成初稿</strong>。</p>
+            <p><strong>05 语言自然化</strong>和<strong>06 风格参考</strong>都是可选的二次处理。开启后，它们会在初稿完成之后继续修改，而不是混进第一次生成。</p>
+            <p>初稿显示在 04，二次处理后的版本显示在<strong>07 最终成稿</strong>。节点里的转圈提示和流动连线表示当前正在执行的步骤。</p>`,
     },
     {
-        title: '文风管理是做什么的？',
+        title: '风格卡与文风语料有什么不同？',
         html: `
-            <p>文风管理用于导入 TXT 或 DOCX 参考语料，并在本机分析作者的句长、标点和功能词习惯。</p>
-            <p>建立索引后，工作台的“智能风格链”会挑选少量合适片段作为写作参考。它主要学习表达习惯，不应复制原文剧情。</p>
-            <p>“检索测试与评分调试”只用于检查为什么命中某些片段，普通使用时可以保持折叠。</p>`,
+            <p><strong>风格卡</strong>来自“范例文章”模板，是一份对表达习惯的概括；启用智能风格链后，它参与初稿提示词。</p>
+            <p><strong>文风语料</strong>在“文风管理”中导入。开启 06 后，系统会在初稿完成后从所选语料库检索 3～5 个真实片段，再做一次受约束的风格改写。</p>
+            <p>两者可以单独使用，也可以配合使用。语义向量是可选辅助；缺少本地模型时，文风检索仍会降级到纯本地 Style Engine。</p>`,
     },
     {
-        title: 'API 密钥、模型和思考模式',
+        title: '模型、预览与生成结果',
         html: `
-            <p><strong>API 密钥</strong>让 Flora 调用你选择的大模型。密钥只在本次使用时输入，不保存到项目数据库。</p>
-            <p><strong>提供商和模型</strong>必须与密钥所属平台一致；不同平台的密钥不能混用。</p>
-            <p><strong>思考模式</strong>只在模型本身支持时可用，通常更慢，也可能消耗更多 Token。</p>
-            <div class="onboarding-links">
-                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI API Key</a>
-                <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer">DeepSeek API Key</a>
-                <a href="https://platform.moonshot.cn/console/api-keys" target="_blank" rel="noopener noreferrer">Kimi API Key</a>
-                <a href="https://cloud.siliconflow.cn/account/ak" target="_blank" rel="noopener noreferrer">硅基流动 API Key</a>
-            </div>`,
-    },
-    {
-        title: '生成之后去哪里？',
-        html: `
-            <p>生成中的状态会显示在“最终成稿”节点。完成后，点击该节点即可查看文章。</p>
-            <p><strong>生成记录</strong>保存过去的生成结果；<strong>全屏编辑</strong>可以继续修改、局部续写或比较版本。</p>
-            <p>右侧“提示词预览”可以在调用模型前检查最终提示词和 Token 预算。右下角按钮用于主题与界面缩放。</p>
-            <p>以后需要重新查看这份介绍时，点击“文章生成链路”右侧的“帮助”。</p>`,
+            <p><strong>API 密钥</strong>只随本次请求使用，不写入数据库。密钥、提供商和模型必须来自同一个平台；“高级”可以调整常用采样参数。</p>
+            <p>右侧<strong>提示词预览</strong>用于生成前检查初稿提示词和 Token 预算，不会调用 AI。生成时，04 显示初稿进度；若开启自然化或风格参考，07 会继续显示处理进度。</p>
+            <p>完成后点击 04 或 07 查看正文。<strong>生成记录</strong>会保存结果，<strong>全屏编辑</strong>可继续修改、续写或比较版本。</p>
+            <p>需要再次查看介绍时，点击“文章生成链路”右侧的<strong>帮助</strong>。</p>`,
     },
 ];
 

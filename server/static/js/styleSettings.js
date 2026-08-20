@@ -1,6 +1,6 @@
 /**
  * Flora Editor - 工作台风格设置
- * 负责风格模式（legacy/smart/off）与风格强度（light/medium/strict）的读取与提示更新。
+ * 负责模板级风格卡模式（legacy/smart/off）与风格强度的读取和提示更新。
  */
 import { $ } from './utils.js';
 
@@ -27,7 +27,4 @@ export function updateWorkspaceStyleModeHelp() {
             ? '智能风格链推荐开启结构化消息，你仍可手动切换'
             : '关闭时完整使用原有字符串拼装格式';
     }
-    // Style RAG 语料库控制区仅在智能风格链模式下展示
-    const ragControl = $('#style-rag-control');
-    if (ragControl) ragControl.style.display = mode === 'smart' ? '' : 'none';
 }

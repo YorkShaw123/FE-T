@@ -53,6 +53,36 @@ def embedding_config():
     }})
 
 
+@style_corpora_bp.route('/embedding-model/status', methods=['GET'])
+def embedding_model_status_route():
+    """检查本地 ONNX 运行时和模型文件；不访问网络、不加载模型。"""
+    from services.embedding_backends import local_embedding_installation_status
+
+    return jsonify({'success': True, 'data': local_embedding_installation_status()})
+
+
+@style_corpora_bp.route('/embedding-model/install', methods=['POST'])
+def install_embedding_model_route():
+    """兼容旧前端：返回安装状态，不在服务进程中静默下载大型模型。"""
+    from services.embedding_backends import local_embedding_installation_status
+
+    status = local_embedding_installation_status()
+    return jsonify({'success': True, 'data': {
+        **status,
+        'started': False,
+        'manual_install': not status['installed'],
+    }})
+
+
+@style_corpora_bp.route('/embedding-model/install-progress', methods=['GET'])
+def embedding_model_install_progress_route():
+    """兼容旧前端：模型安装现为显式的本地脚本流程。"""
+    return jsonify({'success': True, 'data': {
+        'status': 'manual',
+        'message': '请按照本地 ONNX 安装说明执行安装脚本',
+    }})
+
+
 @style_corpora_bp.route('', methods=['GET'])
 def list_corpus():
     try:

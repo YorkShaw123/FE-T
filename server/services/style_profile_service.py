@@ -1,16 +1,17 @@
 """范例文章 Style Card 的分析、校验与持久化。"""
+import copy
 import hashlib
 import json
 from datetime import datetime, timezone
 
 from database import db
-from database.models import PromptTemplate, StyleProfile
+from database.models import PromptTemplate, StyleExcerpt, StyleProfile
 from services.api_client import LLMClient
 from services.errors import GenerationError, friendly_error_message
 
 
 STYLE_CARD_SCHEMA_VERSION = 1
-REQUIRED_OBJECTS = ('narration', 'rhythm', 'language', 'dialogue')
+REQUIRED_OBJECTS = ('narration', 'rhythm', 'language', 'dialogue', 'description_balance')
 DEFAULT_CARD = {
     'schema_version': STYLE_CARD_SCHEMA_VERSION,
     'summary': '',
@@ -78,20 +79,62 @@ def _extract_json_object(text):
         raise GenerationError('风格分析结果不是有效的 JSON 格式，请重试') from exc
 
 
+def _extract_response_json(response):
+    """优先解析正文；正文无有效 JSON 时兼容固定思考模型的 reasoning 字段。"""
+    errors = []
+    for field in ('content', 'reasoning_content'):
+        candidate = response.get(field, '') if isinstance(response, dict) else ''
+        if not str(candidate or '').strip():
+            continue
+        try:
+            return _extract_json_object(candidate)
+        except GenerationError as exc:
+            errors.append(exc)
+    if errors:
+        raise errors[-1]
+    raise GenerationError('风格分析没有返回有效 JSON')
+
+
 def validate_style_card(card):
     if not isinstance(card, dict):
         raise GenerationError('Style Card 必须是 JSON 对象')
-    normalized = dict(DEFAULT_CARD)
-    normalized.update(card)
+    # 保留旧版或用户手工加入的扩展字段，只校验并补齐 V1 已知字段。
+    normalized = copy.deepcopy(card)
     normalized['schema_version'] = STYLE_CARD_SCHEMA_VERSION
-    if not isinstance(normalized.get('summary'), str):
+    summary = card.get('summary', '')
+    if summary is None:
+        summary = ''
+    if not isinstance(summary, str):
         raise GenerationError('Style Card 的 summary 必须是字符串')
+    normalized['summary'] = summary.strip()
     for key in REQUIRED_OBJECTS:
-        if not isinstance(normalized.get(key), dict):
+        source = card.get(key, {})
+        if source is None:
+            source = {}
+        if not isinstance(source, dict):
             raise GenerationError(f'Style Card 的 {key} 必须是对象')
+        normalized[key] = copy.deepcopy(source)
+        for field, default in DEFAULT_CARD[key].items():
+            value = source.get(field, copy.deepcopy(default))
+            if value is None:
+                value = copy.deepcopy(default)
+            if isinstance(default, list):
+                if not isinstance(value, list):
+                    raise GenerationError(f'Style Card 的 {key}.{field} 必须是数组')
+                normalized[key][field] = [
+                    str(item).strip() for item in value if str(item).strip()
+                ]
+            else:
+                if not isinstance(value, str):
+                    raise GenerationError(f'Style Card 的 {key}.{field} 必须是字符串')
+                normalized[key][field] = value.strip()
     for key in ('avoid', 'checkable_rules'):
-        if not isinstance(normalized.get(key), list):
+        value = card.get(key, [])
+        if value is None:
+            value = []
+        if not isinstance(value, list):
             raise GenerationError(f'Style Card 的 {key} 必须是数组')
+        normalized[key] = value
     rules = []
     for index, item in enumerate(normalized['checkable_rules'], start=1):
         if isinstance(item, str):
@@ -156,8 +199,9 @@ def analyze_style_profile(template_id, api_key, provider, model):
             thinking_enabled=False,
             max_tokens=4096,
         )
-        card = validate_style_card(_extract_json_object(response.get('content', '')))
+        card = validate_style_card(_extract_response_json(response))
         card_json = json.dumps(card, ensure_ascii=False, indent=2)
+        previous_source_hash = profile.source_hash
         profile.template_version = template.version
         profile.source_hash = style_source_hash(template.content)
         profile.schema_version = STYLE_CARD_SCHEMA_VERSION
@@ -167,13 +211,22 @@ def analyze_style_profile(template_id, api_key, provider, model):
         profile.analysis_status = 'ready'
         profile.error_message = ''
         profile.updated_at = datetime.now(timezone.utc)
+        if previous_source_hash and previous_source_hash != profile.source_hash:
+            StyleExcerpt.query.filter_by(style_profile_id=profile.id).delete(
+                synchronize_session=False,
+            )
         db.session.commit()
         return profile
     except Exception as exc:
         db.session.rollback()
         profile = StyleProfile.query.filter_by(template_id=template.id).first()
         if profile:
-            profile.analysis_status = 'error'
+            try:
+                previous_card = json.loads(profile.card_json or '{}')
+            except (TypeError, json.JSONDecodeError):
+                previous_card = {}
+            has_previous_card = isinstance(previous_card, dict) and bool(previous_card)
+            profile.analysis_status = 'ready' if has_previous_card else 'error'
             profile.error_message = friendly_error_message(exc)
             db.session.commit()
         if isinstance(exc, GenerationError):
@@ -206,7 +259,11 @@ def restore_analysis_card(template_id):
     template, profile = get_style_profile(template_id)
     if not profile or not profile.analysis_card_json:
         raise GenerationError('没有可恢复的自动分析结果')
-    card = validate_style_card(json.loads(profile.analysis_card_json))
+    try:
+        stored_card = json.loads(profile.analysis_card_json)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise GenerationError('自动分析结果已损坏，请重新分析') from exc
+    card = validate_style_card(stored_card)
     profile.card_json = json.dumps(card, ensure_ascii=False, indent=2)
     profile.analysis_status = 'ready'
     profile.updated_at = datetime.now(timezone.utc)

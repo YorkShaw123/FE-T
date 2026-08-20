@@ -16,6 +16,7 @@ import { loadTemplatesList } from './templateManager.js';
 import { loadHistoryList } from './history.js';
 // 副作用模块：模块加载时即完成各自的事件绑定，需显式导入以触发执行
 import './promptPreview.js';
+import './advancedParams.js';
 import './generation.js';
 import './resultEditor.js';
 import { loadCorporaList } from './styleCorpora.js';

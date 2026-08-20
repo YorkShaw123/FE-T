@@ -14,7 +14,6 @@ def utcnow():
 class PromptTemplate(db.Model):
     """提示词模板模型
     支持版本控制：每次修改创建新版本，通过 parent_id 追溯历史
-    支持变量占位符：模板中使用 {{variable_name}} 标记可修改部分
     """
     __tablename__ = 'prompt_templates'
 
@@ -24,7 +23,7 @@ class PromptTemplate(db.Model):
     content = db.Column(db.Text, nullable=False)
     # 模板说明/备注
     description = db.Column(db.Text, default='')
-    # 自动提取的变量列表（JSON数组字符串）
+    # 旧版模板变量兼容列；功能已移除，不再读写或通过 API 返回。
     variables = db.Column(db.Text, default='[]')
     # 是否启用
     is_active = db.Column(db.Boolean, default=True)
@@ -57,7 +56,6 @@ class PromptTemplate(db.Model):
             'category': self.category,
             'content': self.content,
             'description': self.description,
-            'variables': self.variables,
             'is_active': self.is_active,
             'style_strength': self.style_strength or 'light',
             'sort_order': self.sort_order,
@@ -387,7 +385,7 @@ class GenerationRecord(db.Model):
     assembled_prompt = db.Column(db.Text, default='')
     # 使用的模板ID列表（JSON数组）
     templates_used = db.Column(db.Text, default='[]')
-    # 变量填充值（JSON对象）
+    # 旧版模板变量兼容列；功能已移除，不再读写或通过 API 返回。
     variable_values = db.Column(db.Text, default='{}')
     # 去AI味提示词
     deai_prompt = db.Column(db.Text, default='')
@@ -424,7 +422,6 @@ class GenerationRecord(db.Model):
             'reasoning_content': self.reasoning_content,
             'assembled_prompt': self.assembled_prompt,
             'templates_used': self.templates_used,
-            'variable_values': self.variable_values,
             'deai_prompt': self.deai_prompt,
             'rating': self.rating,
             'pinned': self.pinned,

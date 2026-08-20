@@ -5,7 +5,11 @@ Flora Editor - AI文字创作助手
 import os
 import secrets
 import shutil
+import socket
 import sys
+import threading
+import time
+import webbrowser
 from urllib.parse import urlsplit
 
 # 路径解析必须先于 config 导入执行，因为 config 的 SQLALCHEMY_DATABASE_URI
@@ -39,8 +43,33 @@ def _resolve_run_mode():
     return 'desktop' if getattr(sys, 'frozen', False) else 'web'
 
 
+def _ensure_web_port_available(host, port):
+    """阻止本机测试模式在同一端口叠加启动多个新旧服务。"""
+    try:
+        with socket.create_connection((host, port), timeout=0.25):
+            pass
+    except OSError:
+        return
+    raise RuntimeError(
+        f'本机测试端口 {host}:{port} 已被占用。请先关闭旧的 Flora Editor '
+        '开发服务，再重新启动；否则浏览器可能混合加载新旧前端资源。'
+    )
+
+
 # 项目根目录（server/ 的上级），用于定位旧版源码运行数据目录
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+COMMUNITY_PROMPTS_URL = 'https://www.aishort.top/community-prompts'
+
+
+def _open_community_prompts():
+    """使用系统默认浏览器打开固定提示词库，不接受外部 URL 参数。"""
+    try:
+        if hasattr(os, 'startfile'):
+            os.startfile(COMMUNITY_PROMPTS_URL)
+            return True
+        return bool(webbrowser.open_new_tab(COMMUNITY_PROMPTS_URL))
+    except OSError:
+        return False
 
 
 def _migrate_legacy_data():
@@ -101,6 +130,15 @@ from routes.template_routes import template_bp  # noqa: E402
 from routes.generation_routes import generation_bp  # noqa: E402
 from routes.style_routes import style_bp  # noqa: E402
 from routes.style_corpora_routes import style_corpora_bp  # noqa: E402
+
+
+def _schedule_desktop_exit():
+    """在 HTTP 响应发出后结束 Sidecar，避免 Tauri 只能强杀进程树。"""
+    def exit_after_response():
+        time.sleep(0.15)
+        os._exit(0)
+
+    threading.Thread(target=exit_after_response, daemon=True).start()
 
 
 def create_app(config_name=None):
@@ -164,6 +202,21 @@ def create_app(config_name=None):
     def health():
         return {'status': 'ok', 'app': 'Flora Editor', 'mode': _resolve_run_mode()}
 
+    @app.post('/api/system/shutdown')
+    def shutdown_desktop_sidecar():
+        """只允许 Tauri 管理的桌面 Sidecar 请求退出；开发 Web 模式禁用。"""
+        if _resolve_run_mode() != 'desktop':
+            return jsonify({'success': False, 'error': '仅桌面模式可关闭 Sidecar'}), 404
+        _schedule_desktop_exit()
+        return jsonify({'success': True})
+
+    @app.post('/api/system/open-community-prompts')
+    def open_community_prompts():
+        """从模板编辑器跳转到 AiShort 社区提示词库。"""
+        if not _open_community_prompts():
+            return jsonify({'success': False, 'error': '无法打开系统默认浏览器'}), 502
+        return jsonify({'success': True, 'data': {'url': COMMUNITY_PROMPTS_URL}})
+
     return app
 
 
@@ -184,11 +237,19 @@ def register_error_handlers(app):
 
 
 if __name__ == '__main__':
-    app = create_app()
     # 桌面与测试模式都只监听回环地址；不再提供远程 Web 自托管能力。
     host = '127.0.0.1'
     port = int(os.environ.get('FLORA_PORT', '5000'))
-    if _resolve_run_mode() == 'web':
+    run_mode = _resolve_run_mode()
+    is_reloader_child = os.environ.get('WERKZEUG_RUN_MAIN', '').lower() == 'true'
+    if run_mode == 'web' and not is_reloader_child:
+        try:
+            _ensure_web_port_available(host, port)
+        except RuntimeError as exc:
+            print(f'[启动失败] {exc}', file=sys.stderr)
+            raise SystemExit(2) from exc
+    app = create_app()
+    if run_mode == 'web':
         # Web 模式仅用于本机开发测试（桌面版为唯一产品形态）
         print("=" * 60)
         print("  Flora Editor - AI文字创作助手")
@@ -203,5 +264,7 @@ if __name__ == '__main__':
     # 源码入口是本机开发模式，默认启用重载以便服务代码修改后立即生效；
     # 打包后的 Sidecar 必须禁用重载，避免派生进程导致 Tauri 管理失控。
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
-    use_reloader = _resolve_run_mode() == 'web' and not getattr(sys, 'frozen', False)
+    # 仅显式调试时启用 reloader；普通本机运行不再额外派生监控进程，
+    # 可缩短启动并避免关闭后遗留第二个 Python 进程。
+    use_reloader = debug and run_mode == 'web' and not getattr(sys, 'frozen', False)
     app.run(host=host, port=port, debug=debug, use_reloader=use_reloader)

@@ -16,6 +16,7 @@ import urllib.request
 
 from config import Config
 from services.errors import friendly_error_message
+from services.llm_adapter import LLMAdapter
 
 
 class LLMClientError(Exception):
@@ -102,9 +103,10 @@ class LLMClient:
                     )
 
             # 固定思考模型无需传开关；指令模型也不接收思考参数。
+            # 用户通过「高级」面板显式设置的采样参数优先，未设置时才补默认值。
             if not thinking_enabled and thinking_mode != 'always':
-                configured['temperature'] = 0.7
-                configured['top_p'] = 0.9
+                configured.setdefault('temperature', 0.7)
+                configured.setdefault('top_p', 0.9)
             return configured
 
         if protocol == 'gemini_effort':
@@ -125,21 +127,26 @@ class LLMClient:
 
         if protocol in {'thinking_object', 'thinking_object_with_effort'}:
             enabled = bool(thinking_enabled or thinking_mode == 'always')
+            if self.provider == 'deepseek' and enabled:
+                # DeepSeek 官方明确说明思考模式不支持这些采样参数；即使上游为兼容而
+                # 接受字段也不会生效，因此在协议边界主动移除，避免界面产生错误预期。
+                for key in ('temperature', 'top_p', 'frequency_penalty', 'presence_penalty'):
+                    configured.pop(key, None)
             configured['extra_body'] = {
                 'thinking': {'type': 'enabled' if enabled else 'disabled'},
             }
             if enabled and protocol == 'thinking_object_with_effort':
                 configured['reasoning_effort'] = reasoning_effort
             if not enabled:
-                configured['temperature'] = 0.7
-                configured['top_p'] = 0.9
+                configured.setdefault('temperature', 0.7)
+                configured.setdefault('top_p', 0.9)
             return configured
 
         # 不支持显式思考开关的 OpenAI 兼容模型只发送通用采样参数，
         # 避免把厂商私有字段误发给 OpenAI、千问或 Grok。
         if not thinking_enabled:
-            configured['temperature'] = 0.7
-            configured['top_p'] = 0.9
+            configured.setdefault('temperature', 0.7)
+            configured.setdefault('top_p', 0.9)
         return configured
 
     # ---------- 底层 HTTP 请求 ----------
@@ -298,6 +305,7 @@ class LLMClient:
         thinking_enabled=False,
         reasoning_effort='high',
         max_tokens=None,
+        sampling=None,
     ):
         """
         调用 LLM 生成内容
@@ -306,11 +314,14 @@ class LLMClient:
         :param stream: 是否流式输出
         :param thinking_enabled: 是否启用思考模式
         :param reasoning_effort: 思考强度 (high / max)
-        :param max_tokens: 最大输出 token 数
+        :param max_tokens: 最大输出 token 数（sampling 中显式设置的 max_tokens 优先级更高）
+        :param sampling: 统一采样参数 dict（temperature / top_p / max_tokens /
+            frequency_penalty / presence_penalty）；不支持的参数由适配层过滤
         :return: dict {
             'content': str,
             'reasoning_content': str (if thinking enabled),
-            'usage': dict
+            'usage': dict,
+            'sampling_dropped': list (因厂商不支持而被过滤的参数名)
         }
         """
         if not self.validate_model(self.provider, model):
@@ -327,6 +338,17 @@ class LLMClient:
                 'max_tokens': max_tokens or Config.DEFAULT_MAX_TOKENS,
             }
 
+            # 统一采样参数适配：过滤厂商不支持的参数，避免误发未知字段。
+            filtered_sampling, dropped = LLMAdapter.normalize_sampling(
+                sampling,
+                self.provider,
+                Config.LLM_PROVIDERS.get(self.provider, {}),
+            )
+            # 用户显式设置 max_tokens 时覆盖默认值
+            if 'max_tokens' in filtered_sampling:
+                params['max_tokens'] = filtered_sampling.pop('max_tokens')
+            params.update(filtered_sampling)
+
             params = self.configure_generation_params(
                 params,
                 thinking_enabled=thinking_enabled,
@@ -336,7 +358,9 @@ class LLMClient:
             if stream:
                 return self._generate_stream(params)
             else:
-                return self._generate_sync(params)
+                result = self._generate_sync(params)
+                result['sampling_dropped'] = dropped
+                return result
 
         except LLMClientError:
             raise
@@ -382,6 +406,7 @@ class LLMClient:
         """流式生成并聚合结果"""
         full_reasoning = ''
         full_content = ''
+        finish_reason = None
 
         try:
             for chunk in self._post_stream('/chat/completions', self._build_body(params)):
@@ -397,12 +422,17 @@ class LLMClient:
                     piece = delta['reasoning_content']
                     full_reasoning += piece
                     yield {'type': 'reasoning', 'data': piece}
+                # 记录截断原因（如 max_tokens 触顶时为 'length'），供上层判断续写
+                reason = choices[0].get('finish_reason')
+                if reason:
+                    finish_reason = reason
 
             yield {
                 'type': 'done',
                 'result': {
                     'content': full_content,
                     'reasoning_content': full_reasoning,
+                    'finish_reason': finish_reason,
                 },
             }
         finally:

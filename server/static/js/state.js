@@ -20,6 +20,8 @@ export const state = {
     generationController: null,
     resultReady: false,
     currentStyleCard: null,
+    /** 一键续写时作为「前置文章」传入的已生成正文；非续写时为 null */
+    pendingContinueText: null,
 };
 
 /** 工作台草稿存储键名 */
@@ -28,7 +30,7 @@ export const DRAFT_KEY = 'flora_workspace_draft_v2';
 /** 需要随工作台草稿持久化的表单字段 */
 export const DRAFT_FIELDS = [
     'article-title', 'previous-article',
-    'deai-prompt', 'deai-enabled', 'strict-style-rewrite-enabled', 'provider-select', 'model-select',
+    'deai-prompt', 'deai-enabled', 'style-reference-enabled', 'provider-select', 'model-select',
     'thinking-enabled',
     'structured-prompt-enabled',
 ];

@@ -49,15 +49,13 @@ function renderTemplateList(templates) {
     results.innerHTML = filtered.length ? filtered.map(tpl => {
         const active = tpl.is_active !== false;
         const description = String(tpl.description || '').trim();
-        const preview = description
-            || (tpl.content ? tpl.content.replace(/\{\{.*?\}\}/g, '___').substring(0, 60) : '');
-        const vars = tpl.variables ? (typeof tpl.variables === 'string' ? JSON.parse(tpl.variables) : tpl.variables).join(', ') : '';
+        const preview = description || (tpl.content ? tpl.content.substring(0, 60) : '');
         const updatedAt = tpl.updated_at ? new Date(tpl.updated_at).toLocaleString('zh-CN') : '';
         return `<div class="template-list-item ${active ? 'active' : ''}" data-id="${tpl.id}">
             <span class="item-status"></span>
             <div class="item-info">
                 <div class="item-name">${escapeHtml(tpl.name)} <span style="font-size:11px;color:var(--text-muted)">v${tpl.version}</span></div>
-                <div class="item-meta">${vars ? '📌 ' + escapeHtml(vars) : '无变量'} · ${updatedAt}</div>
+                <div class="item-meta">更新于 ${updatedAt || '未知时间'}</div>
             </div>
             <div class="item-preview">${escapeHtml(preview)}</div>
         </div>`;
@@ -155,6 +153,13 @@ if (importFileInput) {
 // ==================== 模板编辑器 ====================
 
 safeBind('#btn-close-editor', 'click', closeTemplateEditor);
+safeBind('#btn-open-community-prompts', 'click', async () => {
+    try {
+        await api('/api/system/open-community-prompts', { method: 'POST' });
+    } catch (error) {
+        toast('无法打开社区提示词：' + error.message, 'error');
+    }
+});
 
 /** 关闭模板编辑器（含版本历史与风格卡面板） */
 function closeTemplateEditor() {
@@ -225,13 +230,6 @@ $$('.markdown-toolbar button[data-md-prefix], .markdown-toolbar button[data-md-w
         editor.dispatchEvent(new Event('input', { bubbles: true }));
     });
 });
-safeBind('#btn-toggle-markdown-preview', 'click', event => {
-    const panel = $('#template-editor-panel');
-    const visible = !panel.classList.toggle('preview-hidden');
-    event.currentTarget.classList.toggle('active', visible);
-    event.currentTarget.textContent = visible ? '隐藏预览' : '显示预览';
-});
-
 /** 打开模板编辑器：null 新建，否则编辑已有模板。 */
 export async function openTemplateEditor(templateId) {
     const panel = $('#template-editor-panel');

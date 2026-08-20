@@ -3,10 +3,9 @@
  * 负责提示词预览的展开/收起、Token 预算渲染、风格片段选择渲染与预览请求。
  */
 import { $, api, toast, escapeHtml, safeBind } from './utils.js';
-import { getActiveTemplateIds } from './state.js';
+import { state, getActiveTemplateIds } from './state.js';
 import { getWorkspaceStyleMode } from './styleSettings.js';
 import { getSelectedCorpusIds, getEmbeddingApiKey } from './styleCorpora.js';
-import { getWorkspaceVariableValues } from './templatePanel.js';
 
 /** 展开/收起提示词预览抽屉 */
 export function setPromptPreviewDrawer(open) {
@@ -45,25 +44,41 @@ export function renderStyleFallbackWarning(styleMode, styleMetadata) {
     banner.style.display = '';
 }
 
+/** 二次 RAG 必须等初稿产生后才能检索；这里只展示执行计划，不伪造参考片段。 */
+export function renderStyleReferencePlan(plan) {
+    const panel = $('#prompt-preview-runtime-plan');
+    if (!panel) return;
+    if (!plan?.dynamic) {
+        panel.style.display = 'none';
+        panel.innerHTML = '';
+        return;
+    }
+    const corpusIds = (plan.corpus_ids || []).join('、') || '尚未选择';
+    panel.innerHTML = `<strong>06 风格参考将在运行时生成</strong>`
+        + `${escapeHtml(plan.message || '')}<br>所选语料库 ID：${escapeHtml(corpusIds)}。`
+        + '这里不会显示伪造的参考片段；真实片段会在初稿完成后检索并写入第二次模型请求。';
+    panel.style.display = '';
+}
+
 /** 组装提示词预览请求负载 */
 export function buildPromptPreviewPayload() {
     return {
-        variable_values: getWorkspaceVariableValues(),
-        previous_article: $('#previous-article').value,
+        // 一键续写时以已生成正文作为前置文章进行预算估算
+        previous_article: state.pendingContinueText ?? $('#previous-article').value,
         template_ids: getActiveTemplateIds(),
         provider: $('#provider-select').value,
         model: $('#model-select').value,
         deai_enabled: $('#deai-enabled').checked,
         deai_prompt: $('#deai-prompt').value,
-        strict_style_rewrite_enabled: $('#strict-style-rewrite-enabled')?.checked || false,
+        style_reference_enabled: $('#style-reference-enabled')?.checked || false,
         thinking_enabled: $('#thinking-enabled').checked,
         reasoning_effort: 'high',
         structured_prompt_enabled: $('#structured-prompt-enabled').checked,
         style_mode: getWorkspaceStyleMode(),
         scene_type: 'auto',
-        // Style RAG：已勾选的语料库 + Embedding 密钥（缺省回退顶部 LLM 密钥）
+        // Style RAG：已勾选的语料库 + 独立 Embedding 密钥。
         style_corpus_ids: getSelectedCorpusIds(),
-        embedding_api_key: getEmbeddingApiKey() || $('#api-key-input')?.value.trim() || '',
+        embedding_api_key: getEmbeddingApiKey(),
     };
 }
 
@@ -73,7 +88,7 @@ export function renderTokenBudget(budget) {
     const summary = $('#workspace-token-summary');
     if (!budget) return;
     const labels = { safe: '预算充足', warning: '接近上限', over: '已超限' };
-    const phaseLabels = { primary: '正文生成', deai: '去 AI 味', style_rewrite: '严格文风重写' };
+    const phaseLabels = { primary: '正文生成', deai: '去 AI 味', style_reference: '风格参考二次改写' };
     const rows = Object.entries(budget.phases).map(([key, phase]) => {
         const percent = Math.max(0, Math.round(phase.usage_ratio * 100));
         const width = Math.min(100, percent);
@@ -143,7 +158,12 @@ export async function fetchPromptPreview() {
 }
 
 safeBind('#btn-preview-prompt', 'click', async () => {
+    const button = $('#btn-preview-prompt');
+    const loading = $('#prompt-preview-loading');
     try {
+        button.disabled = true;
+        button.textContent = '正在拼接…';
+        loading.style.display = 'flex';
         const previewData = await fetchPromptPreview();
 
         const section = $('#prompt-preview-section');
@@ -161,6 +181,7 @@ safeBind('#btn-preview-prompt', 'click', async () => {
         $('#prompt-preview-meta').textContent =
             `${promptModeLabels[previewData.data.prompt_mode] || previewData.data.prompt_mode} · ${previewData.data.message_count} 条消息 · ${previewData.data.template_count} 个模板 · ${previewData.data.char_count.toLocaleString()} 字符${fallback} · Token 为保守估算`;
         renderTokenBudget(previewData.data.token_budget);
+        renderStyleReferencePlan(previewData.data.style_reference_plan);
         renderStyleSelection(previewData.data.style_metadata, previewData.data.style_mode);
         renderStyleFallbackWarning(previewData.data.style_mode, previewData.data.style_metadata);
         if (previewData.data.style_mode === 'smart_fallback_legacy') {
@@ -170,6 +191,10 @@ safeBind('#btn-preview-prompt', 'click', async () => {
         toast(`提示词共 ${previewData.data.char_count} 字符，使用 ${previewData.data.template_count} 个模板`);
     } catch (e) {
         toast('预览失败: ' + e.message, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = '生成提示词预览';
+        loading.style.display = 'none';
     }
 });
 
@@ -178,6 +203,7 @@ safeBind('#btn-close-preview', 'click', () => {
     $('#prompt-preview-content').style.display = 'none';
     $('#prompt-preview-fallback').style.display = 'none';
     $('#prompt-preview-meta').style.display = 'none';
+    renderStyleReferencePlan(null);
     $('#token-budget-panel').style.display = 'none';
     const summary = $('#workspace-token-summary');
     if (summary) {

@@ -81,6 +81,38 @@ def default_models_dir():
     return previous_models_dir if previous_models_dir.exists() else models_dir
 
 
+def local_embedding_installation_status(model_dir=None):
+    """轻量检查本地运行时与模型文件，不加载 ONNX Session。"""
+    import importlib.util
+
+    target_dir = Path(model_dir or default_models_dir() / 'bge-small-zh-v1.5')
+    manifest_path = target_dir / 'manifest.json'
+    manifest = {}
+    manifest_valid = False
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        manifest_valid = isinstance(manifest, dict)
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    model_path = target_dir / str(manifest.get('model_file') or 'model.onnx')
+    vocab_path = target_dir / str(manifest.get('vocab_file') or 'vocab.txt')
+    model_files_ready = manifest_valid and model_path.is_file() and vocab_path.is_file()
+    try:
+        runtime_available = importlib.util.find_spec('onnxruntime') is not None
+    except (ImportError, AttributeError, ValueError):
+        runtime_available = False
+
+    return {
+        'installed': bool(model_files_ready and runtime_available),
+        'runtime_available': runtime_available,
+        'model_files_ready': model_files_ready,
+        'model_dir': str(target_dir),
+        'model_id': str(manifest.get('model_id') or LOCAL_MODEL_ID),
+        'model_version': str(manifest.get('model_version') or LOCAL_MODEL_VERSION),
+    }
+
+
 _SESSION_CACHE = {}
 _SESSION_LOCK = threading.Lock()
 _CHECKSUM_CACHE = {}

@@ -7,26 +7,25 @@ from config import Config
 
 _CJK_PATTERN = re.compile(r'[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]')
 _ASCII_WORD_PATTERN = re.compile(r'[A-Za-z0-9_]+')
-STRICT_STYLE_REWRITE_MAX_DIFFERENCES = 6
-STRICT_STYLE_REWRITE_BUDGET_ITEM = {
-    'human_message': '一项本地文风指标与目标画像存在需要修正的显著差异。',
-    'rewrite_instruction': '按目标范围调整对应句式或语言习惯，保持表达自然且不要机械堆叠。',
-}
+STYLE_REFERENCE_BUDGET_CHUNK_COUNT = 4
+STYLE_REFERENCE_BUDGET_CHARS_PER_CHUNK = 900
 
 
-def build_strict_style_rewrite_instruction(differences):
-    requirements = '\n'.join(
-        f'{index}. {item["human_message"]}；{item["rewrite_instruction"]}'
-        for index, item in enumerate(differences, start=1)
+def build_style_reference_rewrite_instruction(reference_texts):
+    """构造 RAG 风格参考二次改写指令；正文由调用方作为上一条 assistant 消息传入。"""
+    references = '\n\n'.join(
+        f'【参考片段 {index}】\n{text}'
+        for index, text in enumerate(reference_texts, start=1)
+        if str(text or '').strip()
     )
     return (
-        '请对上面的草稿执行一次严格文风重写。\n\n'
+        '请仅对上一版文章做一次风格参考重写。\n\n'
         '必须保持：剧情、事实、人物、世界观、已有信息、事件顺序和用户要求。\n'
         '只允许调整：句式、节奏、标点、语言组织、修辞和段落方式。\n'
-        '参考片段只用于学习语言习惯；不得复制其中的人物、地点、事件、专有名词、'
-        '独特表达或连续长句。\n\n'
-        f'本地 Style Diff 给出的改写要求：\n{requirements}\n\n'
-        '直接输出完整终稿，不要解释修改过程，不要输出分析或标题外说明。'
+        '下面的片段只用于参考语言习惯；不得复制其中的人物、地点、事件、专有名词、'
+        '独特表达或连续长句，也不得把参考片段的剧情带入文章。\n\n'
+        f'<style_references>\n{references}\n</style_references>\n\n'
+        '直接输出改写后的完整文章，不要解释修改过程，不要输出分析或额外说明。'
     )
 
 
@@ -77,14 +76,21 @@ def calculate_token_budget(
     thinking_enabled=False,
     reasoning_effort='high',
     messages=None,
+    style_reference_enabled=False,
     strict_style_rewrite_enabled=False,
+    max_tokens=0,
 ):
     """计算正文生成及可选二次润色阶段的上下文预算。"""
     context_window = get_model_context_window(provider, model)
     reasoning_tokens = 0
     if thinking_enabled:
         reasoning_tokens = 16384 if reasoning_effort == 'max' else 8192
-    output_tokens = min(Config.DEFAULT_MAX_TOKENS + reasoning_tokens, context_window // 2)
+    requested_output_tokens = (
+        max_tokens
+        if isinstance(max_tokens, int) and not isinstance(max_tokens, bool) and max_tokens > 0
+        else Config.DEFAULT_MAX_TOKENS
+    )
+    output_tokens = min(requested_output_tokens + reasoning_tokens, context_window // 2)
     safety_tokens = min(Config.TOKEN_BUDGET_SAFETY_TOKENS, context_window // 8)
     if messages:
         primary_input = sum(estimate_tokens(item.get('content', '')) for item in messages)
@@ -110,25 +116,23 @@ def calculate_token_budget(
         elif deai['status'] == 'warning' and status == 'safe':
             status = 'warning'
 
-    if strict_style_rewrite_enabled:
-        budget_differences = [
-            STRICT_STYLE_REWRITE_BUDGET_ITEM
-            for _ in range(STRICT_STYLE_REWRITE_MAX_DIFFERENCES)
-        ]
-        rewrite_instruction_tokens = estimate_tokens(
-            build_strict_style_rewrite_instruction(budget_differences)
-        )
+    # strict_style_rewrite_enabled 仅保留为旧 API 的兼容别名。
+    if style_reference_enabled or strict_style_rewrite_enabled:
+        placeholder = '示' * STYLE_REFERENCE_BUDGET_CHARS_PER_CHUNK
+        rewrite_instruction_tokens = estimate_tokens(build_style_reference_rewrite_instruction(
+            [placeholder] * STYLE_REFERENCE_BUDGET_CHUNK_COUNT
+        ))
         rewrite_input = (
             primary_input + output_tokens + rewrite_instruction_tokens
             + Config.CHAT_MESSAGE_OVERHEAD_TOKENS * 2
         )
-        style_rewrite = _phase_budget(
+        style_reference = _phase_budget(
             rewrite_input, context_window, output_tokens, safety_tokens
         )
-        phases['style_rewrite'] = style_rewrite
-        if style_rewrite['status'] == 'over':
-            status, blocking_phase = 'over', 'style_rewrite'
-        elif style_rewrite['status'] == 'warning' and status == 'safe':
+        phases['style_reference'] = style_reference
+        if style_reference['status'] == 'over':
+            status, blocking_phase = 'over', 'style_reference'
+        elif style_reference['status'] == 'warning' and status == 'safe':
             status = 'warning'
 
     return {
@@ -147,7 +151,7 @@ def format_budget_error(budget):
     phase_names = {
         'primary': '正文生成',
         'deai': '去 AI 味二次处理',
-        'style_rewrite': '严格文风重写',
+        'style_reference': '风格参考二次改写',
     }
     phase_name = phase_names.get(phase_key, '正文生成')
     phase = budget['phases'][phase_key]
