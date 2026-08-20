@@ -13,11 +13,20 @@ Write-Host "[1/2] PyInstaller 打包后端 ..."
 $venvPython = Join-Path $Root ".venv\Scripts\python.exe"
 $pythonExe = if (Test-Path $venvPython) { $venvPython } else { "python" }
 $previousBundleSetting = $env:FLORA_BUNDLE_ONNX
+$workDir = Join-Path $Root (".pyinstaller-work-" + [guid]::NewGuid().ToString("N"))
 try {
     $env:FLORA_BUNDLE_ONNX = if ($BundleLocalEmbedding) { "1" } else { "0" }
-    & $pythonExe -m PyInstaller flora-server.spec --clean --noconfirm
+    # 每次使用独立临时工作目录，避免杀毒软件或旧进程短暂占用上次的 TOC/PKG
+    # 文件时错误复用旧产物。dist 仍保持稳定路径，供后续复制。
+    & $pythonExe -m PyInstaller flora-server.spec --workpath $workDir --clean --noconfirm
+    if ($LASTEXITCODE -ne 0) {
+        throw "PyInstaller 打包失败（退出码 $LASTEXITCODE），已停止构建，禁止继续复用旧产物"
+    }
 } finally {
     $env:FLORA_BUNDLE_ONNX = $previousBundleSetting
+    if (Test-Path -LiteralPath $workDir) {
+        Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $distExe = Join-Path $Root "dist\flora-server.exe"

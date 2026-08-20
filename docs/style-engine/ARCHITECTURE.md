@@ -27,10 +27,10 @@ TXT/DOC/DOCX 导入
   → 段落切片与规则标签
   → SQLite 保存 corpus/document/chunk
   → 可选远程 Embedding 写入 float32 BLOB
-  → 生成时使用向量 + BM25 + RRF + MMR 检索片段
-  → prompt_assembler
-  → generation_service
-  → api_client 调用用户选择的生成模型
+  → 初稿由 prompt_assembler 组装普通模板与模板级 Style Card
+  → generation_service / api_client 生成 Draft
+  → 用户启用 06 风格参考时，使用 Style-first + 可选语义辅助 + MMR 检索片段
+  → generation_service 以检索片段约束同一模型完成一次风格参考改写
 ```
 
 并行存在两条较小规模的风格链：
@@ -187,21 +187,22 @@ generated text
 
 当前 Diff 只覆盖 Feature V1.1 已实现的 Dense Features。Signature 模式属于 corpus-specific 稀疏结构，尚未冻结逐模式的人类改写语义，因此不在 M10 冒充可操作 Diff；dialogue ratio、叙事结构与修辞同理，必须等对应版本化 Feature 存在后再加入。
 
-### 4.12 Strict Style Rewrite
+### 4.12 RAG 风格参考二次改写
 
-Strict Style Rewrite 是现有生成流水线的可选末段，不是另一套生成系统：
+RAG 风格参考是现有生成流水线的可选末段，不是另一套生成系统。它与模板级 Style Card 分工明确：Style Card 参与初稿提示，Style Corpus 不进入初稿请求。
 
 ```text
-Style Retrieval / Prompt 注入
-  → Draft
+模板 + 可选 Style Card
+  → Draft（不含 Style Corpus 片段）
   → 可选去 AI 味
-  → 本地 Style Analyzer + Style Diff
-  → 无显著差异：直接结束
-  → 有显著差异：同一 LLM 最多重写一次
+  → 本地 Style Retrieval 检索 3～5 个片段
+  → 同一 LLM 最多执行一次受约束的风格参考改写
   → Final
 ```
 
-开关默认关闭，因此旧请求不会增加 API 调用。开启后仍要求存在版本有效的 Author Profile；多 corpus 时使用最高排序参考片段所属 corpus 作为目标，并在 Diff 中记录目标 ID。重写继续携带原生成消息和参考片段，追加少量自然语言 Diff 指令；它必须保持剧情、事实、人物、世界观、已有信息和用户要求，只调整语言形式，并明确禁止复制参考语料的内容实体、事件和独特表达。同步与流式路径共用相同准备逻辑，自动次数硬限制为一次。
+开关默认关闭，因此旧请求不会增加 API 调用。开启后要求用户至少选择一个有可用 chunk 的 corpus；检索继续使用现有 Author/Scene Profile、Style Signature、内容泄漏惩罚和 MMR。重写以初稿或语言自然化结果为输入，必须保持剧情、事实、人物、世界观、已有信息、事件顺序和用户要求，只调整语言形式，并明确禁止复制参考语料的内容实体、事件和独特表达。同步与流式路径共用相同准备逻辑，自动次数硬限制为一次；检索不可用时保留上一阶段正文。
+
+Style Diff 仍是独立的本地诊断与 Benchmark 能力，但不再作为工作台 06 的自动改写开关或调用条件。
 
 ### 4.13 Style Retrieval Debugger
 

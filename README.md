@@ -1,7 +1,6 @@
-# 🌲 Flora Editor - AI文字创作助手
+# 🌲 Flora Editor
 
-> 一款本地运行的 AI 文字创作工具：通过提示词模板快速组装指令，调用大语言模型 API 生成文章。
-> **产品定位**：桌面端（Tauri + Flask Sidecar）是唯一产品形态；浏览器入口仅用于本机开发测试，固定监听 `127.0.0.1`。
+> 面向中文文字与小说创作的 Windows 本地 AI 编辑器：用提示词模板组织设定，以文风系统提供参考，再调用用户选择的大语言模型生成和修改文章。
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![Flask](https://img.shields.io/badge/Flask-3.1-lightgrey)
@@ -9,293 +8,128 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-**GitHub**：<https://github.com/YorkShaw123/FE-T>
+Flora Editor 是一款本地运行的桌面小工具。它把人物、背景、剧情、范例和其他约束整理成可复用模板，通过可视化生成链路组合提示词，并将成稿、模板和文风语料保存在本机。
+
+项目以 Windows 桌面端为正式产品形态；浏览器地址只用于本机开发测试，不提供 Web、SaaS 或远程自托管能力。
 
 ## 功能特点
 
-### 核心功能
-- **提示词模板管理**：按分类（人物设定、背景设定、剧情设定、范例文章、更多约束）管理自定义提示词模板
-- **挖空修改**：模板中使用 `{{变量名}}` 标记可修改的部分，自动生成输入框
-- **一键生成**：将所有活跃模板自动拼接为完整提示词，调用 AI 生成文章
-- **三种提示词组装模式**：兼容字符串、结构化消息、智能风格链
-- **智能风格链**：自动分析范例文章生成 Style Card，按场景检索风格片段，让文风稳定贴近参考
-- **Style RAG 风格语料库**：导入百万字级 TXT/DOCX 风格语料，语义切片 + 规则打标 + 向量化，生成时混合检索（向量 + BM25 + MMR 重排）动态挑选 3~5 个风格片段，只学文风不抄情节
-- **去AI味处理**：第一次生成后自动发送去AI味提示词，获得更自然的文章
-- **前情提要压缩**：过长的前情提要自动压缩为概述
-- **前置文章导入**：支持 TXT、DOC、DOCX 文本一键导入
-- **Token 预算预检**：生成前估算 Token 用量，超限提前拦截并提示
-- **全屏编辑器**：对生成结果全屏 Markdown 编辑，支持局部续写/重写/扩写/润色与 diff 对比
-- **多模型支持**：DeepSeek、OpenAI、Kimi、通义千问、智谱 GLM、Google Gemini、xAI Grok 和硅基流动
-- **思考模式**：支持 DeepSeek、Kimi、智谱与 Gemini 对应模型的思考模式（以厂商接口能力为准）
-- **暗色/亮色模式**：一键切换
-
-### 高级功能
-- **提示词版本控制**：修改内容自动创建新版本，支持版本回溯和恢复
-- **生成记录管理**：保存生成的文章及使用的模板、时间等信息，支持置顶、删除单条与一键清空
-- **修改版追踪**：全屏编辑器中的修改与 AI 处理历史保存到记录，可按行对比原文与修改版
-- **智能链回退告警**：智能风格链不可用时，预览与生成前醒目提示回退原因并给出修复指引
-- **A/B测试支持**：快速切换模板配置，对比不同提示词效果
-- **导入/导出**：支持 JSON 和 Markdown 格式的模板导入导出
-- **API密钥安全**：每次使用手动输入，不存储到文件或数据库
-- **模板变量记忆**：变量输入值自动保存到 localStorage
-- **错误提示中文化**：后端异常统一转换为中文提示，常见英文错误（鉴权失败、限流、余额不足等）自动翻译
-
-## 目录结构
-
-```
-Flora_Editor/
-├── Flora Editor.exe                            # 桌面端主程序（双击即可运行，主分发形态）
-├── flora-server.exe    # 桌面端内嵌后端（与主程序同目录分发）
-├── README.md
-├── LICENSE                                        # MIT 开源许可证
-├── requirements.txt                               # Python 后端依赖
-├── package.json                                   # Tauri 构建脚本
-├── flora-server.spec                           # PyInstaller 打包配置
-├── flora-version-info.txt                      # 后端 exe 版本信息（降低杀软误报）
-├── server/                                        # Flask 本地 Sidecar 后端
-│   ├── app.py                                     # Sidecar / 本机测试入口
-│   ├── config.py                                  # 应用配置
-│   ├── database/                                  # ORM 模型、轻量迁移
-│   ├── services/                                  # 业务服务层
-│   ├── routes/                                    # API 路由层
-│   ├── templates/                                 # 前端页面模板
-│   └── static/                                    # 前端静态资源
-├── src/                                           # Tauri 启动等待页（后端就绪后自动跳转）
-├── src-tauri/                                     # Tauri 桌面应用（主产品）
-│   ├── src/                                       # Rust 源码（Sidecar 启动与清理）
-│   ├── icons/                                     # 应用图标
-│   ├── capabilities/                              # Tauri 权限配置
-│   ├── binaries/                                  # 后端打包产物（构建时生成）
-│   ├── Cargo.toml
-│   └── tauri.conf.json                            # externalBin 指向后端二进制
-├── scripts/                                       # 构建 / 维护脚本
-│   ├── build-all.ps1                              # 一键构建 + 复制直接运行版到根目录
-│   ├── build-backend.ps1                          # 仅打包 Flask 后端
-│   └── generate-icon.py                           # 生成应用图标源图
-└── data/                                          # 旧数据目录（迁移后可保留备份）
-```
-
-### 后端职责分层
-
-`server/services/` 中 `generation_service.py` 是文章生成公共门面；新增代码按职责放入对应模块：
-
-```text
-server/
-├── services/
-│   ├── errors.py                    # 跨服务领域异常与中文错误文案
-│   ├── generation_service.py        # 兼容门面 + 正文生成编排
-│   ├── generation/
-│   │   ├── editing.py               # 局部续写、重写、扩写、润色
-│   │   └── records.py               # 生成记录查询与持久化
-│   ├── prompt_assembler.py          # 兼容/结构化/智能风格链提示词编排
-│   ├── style_profile_service.py     # Style Card 分析与主风格管理
-│   ├── style_excerpt_service.py     # 风格片段切分、标注与场景检索
-│   ├── style_rag_service.py         # Style RAG：语料切片/打标/向量化/混合检索+MMR
-│   ├── token_budget.py              # Token 预算与超限检查
-│   └── api_client.py                # 各 LLM 提供商协议适配（含 Embedding）
-├── routes/
-│   ├── template_routes.py           # 模板 API
-│   ├── generation_routes.py         # 生成 API
-│   ├── style_routes.py              # 风格 API
-│   ├── style_corpora_routes.py      # 风格语料库 API（CRUD/导入/索引/检索测试）
-│   └── support/                     # 文档提取、请求解析等支撑逻辑
-└── database/
-    └── migrations.py                # 幂等 SQLite 轻量迁移
-```
-
-路由层只处理 HTTP 输入输出；领域校验放在服务层；提供商协议差异集中在 `api_client.py`，避免散落到路由或前端。
+- **提示词模板管理**：将人物、背景、剧情、范例文章和其他约束分开保存，按本次写作需要启用。
+- **多服务 AI 生成**：选择不同 AI 服务和模型，按当前模板、上下文与文风配置生成文章。
+- **智能风格链**：从范例文章提取 Style Card，并按写作场景选择少量参考片段。
+- **Style RAG 文风语料库**：导入大规模 TXT、DOC 或 DOCX 参考文本，检索与当前写作场景匹配、同时降低内容复用风险的文风片段。
+- **本地 Style Engine**：在本机分析中文句式节奏、标点和功能词等特征；语义向量只是可选辅助信号。
+- **续写与修改**：支持续写、重写、扩写、润色、去 AI 味处理，以及可选的 RAG 风格参考二次改写。
+- **编辑与历史**：在全屏 Markdown 编辑器中修改、比较版本，并管理生成记录。
+- **生成前检查**：预估 Token 用量，在超过模型上下文限制前给出提示。
 
 ## 快速开始
 
-### 方式一：桌面版（推荐，唯一主分发形态）
+### Windows 桌面版
 
-项目根目录已包含可直接运行的两个文件（由构建脚本生成）：
+桌面版是普通用户的主要使用方式：
 
-1. 将 `Flora Editor.exe` 与 `flora-server.exe` 放在**同一目录**（保持文件在根目录即可）
-2. 双击 `Flora Editor.exe`，等待本地服务启动后自动进入工作台
+1. 获取同一版本的 `Flora Editor.exe` 和 `flora-server.exe`。
+2. 将两个文件放在同一目录，不要单独移动其中一个。
+3. 双击 `Flora Editor.exe`，等待工作台打开。
 
-> 桌面版无需安装 Python、Node 或 Rust，用户数据（SQLite）自动持久化在 `%USERPROFILE%\.flora-editor\data`。
+桌面版不要求用户安装 Python、Node.js 或 Rust。首次启动会在用户目录创建本地数据文件。
 
-### 方式二：本机测试模式（仅开发调试）
+> 当前仓库根目录中的两个 EXE 是构建脚本生成的直接运行版；正式安装包位于构建产物的 NSIS 目录。
 
-> 该入口不属于产品分发能力，固定监听 `127.0.0.1`，不支持远程访问或自托管。
+### 本机开发运行
 
-```bash
-# 1. 创建虚拟环境并安装依赖
+需要 Python 3.10 或更高版本：
+
+```powershell
 python -m venv .venv
-# Windows PowerShell
 .\.venv\Scripts\python -m pip install -r requirements.txt
-
-# 2. 启动本机测试服务
 .\.venv\Scripts\python server\app.py
 ```
 
-浏览器访问 http://127.0.0.1:5000。仅可用 `FLORA_PORT` 覆盖测试端口。
+然后访问 <http://127.0.0.1:5000>。该服务固定监听本机回环地址；可用 `FLORA_PORT` 修改开发端口。
 
-### 开发质量检查
+开发检查、桌面调试和目录说明见[开发指南](docs/development.md)。
 
-运行 Lint 和测试前，安装仅供开发使用的依赖：
+## 基本使用
 
-```powershell
-.\.venv\Scripts\python -m pip install -r requirements-dev.txt
-```
+1. 在“模板管理”中创建或选择人物、背景、剧情、范例文章等模板。
+2. 在顶栏选择 AI 服务并填写该服务的 API Key。
+3. 回到工作台，在左侧启用本次需要的模板；模板内容会按原文直接进入生成链，不需要特殊占位符。
+4. 按需选择提示词编排、风格卡和上下文输入，然后点击“生成文章”。初次生成结果显示在“04 生成初稿”。
+5. 若开启“05 语言自然化”或“06 风格参考”，系统会在初稿完成后各执行一次可选处理，处理后的版本显示在“07 最终成稿”。
+6. 点击初稿或最终成稿节点查看正文，也可进入全屏编辑器继续修改。
 
-```powershell
-# Python Lint
-.\.venv\Scripts\python -m ruff check server scripts tests
+API Key 由不同服务商分别签发，不能混用。思考模式是否可用取决于当前 Provider 和模型能力。
 
-# Flask 冒烟测试
-.\.venv\Scripts\python -m pytest
+### 使用文风功能
 
-# 原生 JavaScript 语法检查
-Get-ChildItem server\static\js\*.js | ForEach-Object { node --check $_.FullName }
+- 少量范例可使用“智能风格链”：先为范例模板生成 Style Card 和参考片段，再在工作台启用。
+- 大规模参考文本可使用“文风管理”：创建语料库、导入文件，然后选择是否建立语义向量索引；工作台开启“06 风格参考”后，系统会在初稿完成后检索片段并进行一次受约束的二次改写。
+- Style Engine 的主要文风分析和排序在本机完成；没有语义模型时仍可降级运行，不会导致整个文风检索不可用。
 
-# Rust/Tauri 静态检查
-cargo check --manifest-path src-tauri\Cargo.toml --locked
-```
+详细原理、索引兼容规则和内容复用保护见 [Style RAG 与 Style Engine](docs/style-rag.md)。
 
-当前 pytest 只覆盖本地服务启动、安全响应头与跨源写请求拦截等关键边界，尚未覆盖需要真实模型 API 的生成流程。Python 代码暂未启用严格静态类型检查：现有模块类型注解较少，后续应按模块渐进补充，而不是一次性开启严格模式并大范围改写。
+## Embedding 模式
 
-### 安装本地向量化（开发机）
+当前代码同时支持两种可插拔 Embedding 后端，但 **默认选择本地模式**：
 
-本地 Embedding 使用 `BAAI/bge-small-zh-v1.5` 的官方权重，在本机一次性导出 ONNX。模型约 95 MB，安装到 `%USERPROFILE%\.flora-editor\models\bge-small-zh-v1.5`，不会进入 Git、SQLite 或 `flora-server.exe`；临时 PyTorch/Transformers 导出环境在成功后自动删除。
+| 模式 | 实现 | 是否需要 API Key | 用途 |
+|---|---|---:|---|
+| 本地（默认） | `BAAI/bge-small-zh-v1.5` + ONNX Runtime CPU | 否 | 为场景/语义提供辅助信号 |
+| 远程（兼容） | 硅基流动 `BAAI/bge-m3` | 是 | 兼容已有远程索引和手动选择 |
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-local-embedding.ps1
-.\.venv\Scripts\python scripts\verify_local_embedding.py
-```
+本地模型和运行时缺失时，检索会回退到不含语义分数的本地 Style Engine。不同模型生成的向量不会混用；更换后端或模型后，需要重新向量化对应语料库。
 
-安装或更换模型后，需要在「文风管理」中对已有语料库重新执行向量化。模型缺失或损坏时，Style Retrieval 会降级为不含 semantic score 的纯本地 Style Engine。
+安装方法、模型目录和发行包说明见[本地 Embedding](docs/local-embedding.md)。
 
-本地向量化按小批次执行，并在桌面端显示片段进度、百分比、已用时间和预计剩余时间。以本项目开发机实测，约 133 万字、2658 个片段的纯 ONNX 推理约需 2 分钟；首次模型加载、CPU 性能和磁盘速度会使实际时间有所浮动。
+## 支持的 AI 服务
 
-## 使用说明
+当前应用配置包含以下 Provider：
 
-### 1. 配置模板
-在「模板管理」页面中，按分类创建提示词模板。使用 `{{变量名}}` 标记需要修改的位置。
+- DeepSeek
+- OpenAI
+- Kimi（月之暗面官方）
+- 通义千问（阿里云百炼）
+- 智谱 GLM
+- Google Gemini
+- xAI Grok
+- 硅基流动
 
-### 2. 填写API密钥
-在顶部输入框中输入所选官方平台对应的 API 密钥（不会保存）。各平台 Key 不能混用；「硅基流动」仍使用硅基流动 API Key，并继续承担 Style RAG 的 Embedding。
+实际可用模型、思考能力、上下文限制和费用可能随服务商调整，请以应用内当前配置和各服务商 API 为准。
 
-### 3. 填写变量
-在工作台的变量区域，填写每个 `{{变量}}` 对应的值。
+## 数据与隐私
 
-### 4. 生成文章
-选择模型，根据需要启用思考模式和去AI味处理，点击「生成文章」。
+- API Key 仅从当前输入框随请求使用，不写入 SQLite，也不保存到文件或浏览器本地存储；重新打开应用后需要再次输入。
+- 模板、文风语料索引和生成记录保存在 `%USERPROFILE%\.flora-editor\data\flora.db`。
+- 本地 Embedding 模型保存在 `%USERPROFILE%\.flora-editor\models\`，不写入 SQLite。
+- 可用 `FLORA_DATA_DIR` 和 `FLORA_MODELS_DIR` 覆盖开发测试目录。
+- Flask 服务只监听 `127.0.0.1`；桌面端使用随机回环端口，开发模式默认使用 `5000`。
+- 卸载应用默认保留 SQLite 数据和 WebView2 本地缓存。如需彻底删除，请先备份，再手动清理相应用户目录。
 
-### 5. 使用智能风格链（可选）
-1. 在「模板管理」中创建或选择一个「范例文章」分类的模板，粘贴参考文本
-2. 打开「风格卡」面板，点击「分析当前范例」，自动生成 Style Card（叙述视角、节奏、语言风格、检查规则等）
-3. 点击「重新生成片段」，将范例切成参考片段并按场景打标
-4. 回到工作台，将风格模式切换为「智能风格链」，生成时会按当前场景自动挑选最相关的风格片段
+从旧品牌目录迁移时，程序只在新数据库尚不存在时复制旧数据，并保留原文件作为备份。
 
-> 若范例模板尚未生成有效的 Style Card，智能风格链会自动回退为普通提示词，并在预览与生成前给出醒目提示与修复指引。
+## 开发文档
 
-### 6. 使用风格语料库（Style RAG，可选）
+- [架构说明](docs/architecture.md)：Tauri、Flask Sidecar、前后端与数据层的关系。
+- [开发指南](docs/development.md)：源码运行、项目目录和质量检查命令。
+- [Style RAG 与 Style Engine](docs/style-rag.md)：语料导入、文风特征、检索和兼容性。
+- [本地 Embedding](docs/local-embedding.md)：本地/远程后端、模型安装与重新索引。
+- [Windows 构建](docs/build.md)：后端打包、Tauri 构建和产物位置。
+- [故障排查](docs/troubleshooting.md)：启动、Embedding、构建和 API 常见问题。
+- [Style Engine 设计文档](docs/style-engine/README.md)：里程碑、特征规格和评测计划。
 
-针对海量参考语料（小说集、散文集等），无需逐篇生成 Style Card：
+## 构建
 
-1. 切换风格模式为「智能风格链」，展开「风格语料库（Style RAG）」区域，点击「管理语料库」
-2. 新建语料库（如「张爱玲风格集」），导入本地 TXT/DOC/DOCX 文件（单个文件 ≤ 20MB）
-3. 系统自动按自然段语义切片（200~900 字），并规则打标场景/节奏/视角/情绪，零成本无需 API
-4. 点击「向量化」，输入硅基流动 API 密钥，为全部切片生成 BGE-M3 向量（每千字成本可忽略）
-5. 回到工作台勾选该语料库，生成时系统会按当前剧情设定实时混合检索（向量 + BM25）并 MMR 重排，挑选 3~5 个风格片段注入提示词——只学习句式节奏与描摹手法，不会带入语料中的人物与情节
-6. 可用「检索测试」输入一句话实时预览命中的风格片段与相关度，便于调试语料效果
-
-> 技术说明：向量以 float32 BLOB 存入 SQLite，检索时加载为 NumPy 矩阵（4000 切片仅约 16MB 内存，毫秒级）；不引入 ChromaDB/Qdrant 等向量库，PyInstaller 打包体积与杀软误报不受影响。
-> 检索矩阵使用原地归一化，避免在最大候选池下额外复制一整份约 19.5MB 的向量数据。
-
-### 7. 查看历史
-在「生成记录」页面查看和管理所有历史生成结果。
-
-## 支持的模型
-
-| 提供商 | 模型 | 思考模式 |
-|--------|------|----------|
-| DeepSeek | V4 Flash | ✅ |
-| DeepSeek | V4 Pro | ✅ |
-| OpenAI | GPT-4.1 | ❌ |
-| OpenAI | GPT-4o | ❌ |
-| OpenAI | GPT-4o Mini | ❌ |
-| Kimi（月之暗面官方） | Kimi K2.6 / K2.5 | ✅ 可切换 |
-| 通义千问（阿里云百炼） | Qwen Plus / Turbo | ❌ |
-| 智谱 GLM | GLM-4.7 / FlashX | ✅ 可切换 |
-| Google Gemini（官方） | Gemini 2.5 Pro | ✅ 内置思考 |
-| Google Gemini（官方） | Gemini 2.5 Flash | ✅ 可切换 |
-| xAI | Grok 4.3 | ❌ |
-| 硅基流动 | Kimi K2 系列 / BGE-M3 | 依模型而定 |
-
-模型 ID、接口能力和费用可能由厂商调整，维护时以官方文档为准：[DeepSeek](https://api-docs.deepseek.com/api/create-chat-completion)、[OpenAI](https://platform.openai.com/docs/api-reference/chat)、[Kimi](https://platform.kimi.com/docs/api/chat)、[阿里云百炼](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions)、[智谱 GLM](https://docs.bigmodel.cn/cn/guide/models/text/glm-4.7)、[Google Gemini](https://ai.google.dev/gemini-api/docs/openai)、[xAI](https://docs.x.ai/developers/rest-api-reference/inference/chat)。
-
-## 本地数据
-
-- 数据统一存放在 `%USERPROFILE%\.flora-editor\data\flora.db`，可用 `FLORA_DATA_DIR` 覆盖（仅供开发测试）。
-- 品牌更名前的数据会在首次运行时自动复制到 `%USERPROFILE%\.flora-editor\data\flora.db`；旧数据库仍保留为备份，不会被删除。
-- 本地 Embedding 模型若仍位于旧品牌目录，程序会继续读取，无需重新下载。
-- 桌面版使用随机回环端口，本机测试模式默认使用 `5000`。
-
-## 打包构建（Windows）
-
-前置要求：Node.js ≥ 18、Rust 工具链、Python 3.10+。
+安装 Node.js 18+、Rust 工具链和 Python 3.10+ 后：
 
 ```powershell
-# 1. 安装前端依赖（Tauri CLI）
 npm install
-
-# 2. 一键构建：先打包 Python 后端，再构建 Tauri 安装包，
-#    最后把「直接运行版」主程序 + 后端复制到项目根目录
 npm run build:all
 ```
 
-构建产物：
-
-| 产物 | 位置 | 说明 |
-|------|------|------|
-| 直接运行版主程序 | 项目根目录 `Flora Editor.exe` | 与 `flora-server.exe` 同目录双击运行 |
-| 内嵌后端 | 项目根目录 `flora-server.exe` | 由 PyInstaller 打包，随主程序分发 |
-| NSIS 安装包 | `src-tauri\target\release\bundle\nsis\` | 面向普通用户的安装程序 |
-
-分步构建：
-
-```powershell
-# 仅打包后端（生成 src-tauri\binaries\flora-server-*.exe）
-npm run build:backend
-
-# 仅构建 Tauri 桌面应用与安装包
-npm run tauri:build
-```
-
-> 打包说明：后端 exe 关闭了 UPX 压缩（降低杀软误报率）并注入标准 Windows 版本信息（[flora-version-info.txt](flora-version-info.txt)）；`build:backend` 的原始产物位于 `dist/flora-server.exe`。
-> 默认发行包不包含可选的 ONNX Runtime，避免意外增加体积；纯本地 Style/BM25 检索不受影响。需要制作包含本地语义运行时的专用包时，先安装 `requirements-local-embedding.txt`，再运行 `powershell -ExecutionPolicy Bypass -File scripts\build-backend.ps1 -BundleLocalEmbedding`。模型文件仍需单独放入用户模型目录。
-
-### 桌面版架构说明
-
-- **前端 100% 复用**：`server/templates/`、`server/static/` 由 Flask 直接提供，桌面窗口在后端就绪后自动导航到本地随机端口，前端代码零修改
-- **文风管理**：Style Corpus 导入、可选向量化、Embedding 设置与检索评分调试集中在独立顶级页面；工作台只保留本次生成的文风选择
-- **后端 100% 复用**：`server/services/`、`server/routes/`、`server/database/` 用 PyInstaller 编译为单文件可执行程序，由 Tauri 以 Sidecar 方式自动拉起
-- **Sidecar 启动**（`src-tauri/src/lib.rs`）：Tauri 启动时以 `shell.sidecar("flora-server")` 拉起 Flask 后端，先探测空闲端口并通过环境变量 `FLORA_PORT` 传给后端，轮询该端口就绪后跳转；退出时自动 kill 子进程，避免残留
-- **`useLocalToolsDir: true`**（`tauri.conf.json`）：将 NSIS 等打包工具缓存到项目内 `src-tauri/target/.tauri/`，避免写入系统缓存目录（无权限或沙箱环境下必要）
-
-### 安装与卸载
-
-- 安装：双击 `Flora Editor_1.0.0_x64-setup.exe`，默认安装到当前用户目录（`currentUser` 模式，无需管理员权限），语言为简体中文；安装时会创建开始菜单与桌面快捷方式
-- 卸载：通过「设置 → 应用」或开始菜单中的卸载入口执行；NSIS 卸载器会移除应用文件、快捷方式与注册表条目
-- 数据保留：卸载时**默认保留用户数据**——SQLite 数据库存放在统一用户数据目录，前端缓存存放在 `%LOCALAPPDATA%\com.flora.editor`（WebView2 数据）；如需彻底清除，可手动删除这两个目录
-
-## 常见问题排查
-
-| 现象 | 原因 | 解决 |
-|---|---|---|
-| 窗口提示「后端启动超时」 | 随机端口被占用、杀毒软件拦截、上次运行残留进程 | 任务管理器结束 `flora-server.exe` 后重试；将应用加入杀毒白名单 |
-| 直接运行版双击无反应 | 主程序与后端不在同一目录，或后端被杀毒软件拦截 | 确认 `flora-server.exe` 与主程序同目录；将应用加入杀毒白名单 |
-| `cargo` 命令找不到 | cargo 不在 PATH | `$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"` |
-| `NSIS directory is missing some files` | 打包工具缓存损坏或网络下载失败 | 删除 `src-tauri\target\.tauri\NSIS` 目录后重新 `npm run tauri:build` |
-| Sidecar 无法启动（终端无输出） | `binaries/` 下二进制命名不匹配 | 确认存在 `flora-server-x86_64-pc-windows-msvc.exe`，重新执行 `npm run build:backend` |
-| 杀毒软件误报 | PyInstaller 单文件程序未签名 | 加入白名单，或后续配置代码签名证书 |
-| 构建下载超时（GitHub 资源被阻断） | 网络代理问题 | 使用镜像或代理下载后手动放入缓存，再重试构建 |
+该命令生成 Flask Sidecar、Tauri 桌面程序和 NSIS 安装包。详细前置条件、分步命令和本地 Embedding 打包选项见 [Windows 构建](docs/build.md)。
 
 ## License
 
-本项目以 **MIT License** 开源（见 [LICENSE](LICENSE)）。Copyright (c) 2026 肖嘉琛。
-
-MIT 为宽松许可证：允许自由使用、复制、修改、合并、发布、分发、再许可和/或出售本软件副本，仅需保留版权声明与本许可声明。参考采用相同协议的高星项目：LobeChat、Open WebUI。
+本项目采用 [MIT License](LICENSE)。

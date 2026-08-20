@@ -1,3 +1,4 @@
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -11,8 +12,11 @@ const SERVER_HOST: &str = "127.0.0.1";
 /// 等待后端启动的超时时间
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// 持有 Sidecar 子进程句柄，用于应用退出时清理
-struct SidecarHandle(Mutex<Option<CommandChild>>);
+/// 持有 Sidecar 子进程句柄与后端端口，用于应用退出时优雅关闭
+struct SidecarHandle {
+    child: Mutex<Option<CommandChild>>,
+    port: u16,
+}
 
 /// 探测一个当前空闲的本地端口，作为 Flask 后端监听端口。
 /// 桌面版使用随机空闲端口，避免与本机测试服务或其他程序冲突。
@@ -28,9 +32,32 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
         if TcpStream::connect((SERVER_HOST, port)).is_ok() {
             return true;
         }
-        std::thread::sleep(Duration::from_millis(300));
+        // Flask 就绪后尽快切换首屏；100ms 轮询仍很轻量，并减少额外等待。
+        std::thread::sleep(Duration::from_millis(100));
     }
     false
+}
+
+/// 探测后端端口是否仍在监听（后端已退出则返回 false）
+fn port_listening(port: u16) -> bool {
+    TcpStream::connect((SERVER_HOST, port)).is_ok()
+}
+
+/// 向后端发送优雅退出请求（POST /api/system/shutdown）。
+/// 后端收到后会在短暂延迟内自行退出；请求失败（后端已退出或不可达）时静默忽略。
+fn request_shutdown(port: u16) {
+    let Ok(mut stream) = TcpStream::connect((SERVER_HOST, port)) else {
+        return;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(300)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(300)));
+    let request = format!(
+        "POST /api/system/shutdown HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+        SERVER_HOST, port
+    );
+    let _ = stream.write_all(request.as_bytes());
+    let mut buf = [0u8; 128];
+    let _ = stream.read(&mut buf);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -72,7 +99,10 @@ pub fn run() {
                 }
             });
 
-            app.manage(SidecarHandle(Mutex::new(Some(child))));
+            app.manage(SidecarHandle {
+                child: Mutex::new(Some(child)),
+                port: server_port,
+            });
 
             // 2) 等待后端端口就绪后，把主窗口导航到 Web 界面
             let window = app
@@ -100,20 +130,40 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("Tauri 应用构建失败")
         .run(|app, event| {
-            // 应用退出时清理 Sidecar 进程，避免残留 Flask 服务器
+            // 应用退出时优雅关闭 Sidecar：先请求后端自行退出，等待其真正
+            // 退出后再强杀兜底，避免强杀进程树导致黑窗口闪现或进程残留。
             if let RunEvent::Exit = event {
                 if let Some(handle) = app.try_state::<SidecarHandle>() {
-                    if let Some(child) = handle.0.lock().unwrap().take() {
-                        #[cfg(windows)]
-                        {
-                            // PyInstaller onefile 打包的 sidecar 会派生 Python 子进程，
-                            // 仅 kill 主进程会留下孤儿进程继续占用端口；
-                            // 因此先按进程树整树清理，再 kill 兜底。
-                            let _ = std::process::Command::new("taskkill")
-                                .args(["/PID", &child.pid().to_string(), "/T", "/F"])
-                                .output();
+                    let port = handle.port;
+                    let child = handle.child.lock().unwrap().take();
+                    // 1) 请求后端优雅退出（后端收到后约 0.3 秒内自行退出）
+                    request_shutdown(port);
+                    // 2) 等待后端自行退出（最多约 1.5 秒）
+                    for _ in 0..15 {
+                        if !port_listening(port) {
+                            break;
                         }
-                        let _ = child.kill();
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    let still_running = port_listening(port);
+                    // 3) 仅在后端确实仍存活时强杀兜底（PyInstaller onefile 会派生 Python
+                    //    子进程，仅 kill 主进程会留下孤儿进程继续占用端口，
+                    //    因此先按进程树整树清理，再 kill 兜底）。正常退出路径
+                    //    不再启动 taskkill，避免关闭应用后闪出控制台窗口。
+                    if let Some(child) = child {
+                        if still_running {
+                            #[cfg(windows)]
+                            {
+                                use std::os::windows::process::CommandExt;
+
+                                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                                let _ = std::process::Command::new("taskkill")
+                                    .args(["/PID", &child.pid().to_string(), "/T", "/F"])
+                                    .creation_flags(CREATE_NO_WINDOW)
+                                    .output();
+                            }
+                            let _ = child.kill();
+                        }
                     }
                 }
             }

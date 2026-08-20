@@ -17,6 +17,7 @@ from services.embedding_backends import (  # noqa: E402
     LocalEmbeddingBackend,
     clear_embedding_session_cache,
     create_embedding_backend,
+    local_embedding_installation_status,
 )
 from app import create_app  # noqa: E402
 from database import db  # noqa: E402
@@ -96,6 +97,31 @@ def test_same_scene_is_more_similar_than_unrelated_scene(local_model):
 def test_missing_local_model_is_an_expected_unavailable_state(tmp_path):
     with pytest.raises(EmbeddingBackendUnavailable, match='模型缺失'):
         create_embedding_backend('local', model_dir=tmp_path / 'missing')
+
+
+def test_local_installation_status_checks_runtime_and_model_files(
+    local_model, monkeypatch,
+):
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, 'find_spec', lambda name: object())
+    status = local_embedding_installation_status(local_model)
+
+    assert status['installed'] is True
+    assert status['runtime_available'] is True
+    assert status['model_files_ready'] is True
+    assert status['model_dir'] == str(local_model)
+
+
+def test_local_installation_status_reports_missing_model(tmp_path, monkeypatch):
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, 'find_spec', lambda name: None)
+    status = local_embedding_installation_status(tmp_path / 'missing')
+
+    assert status['installed'] is False
+    assert status['runtime_available'] is False
+    assert status['model_files_ready'] is False
 
 
 def test_output_dimension_mismatch_is_rejected(local_model):

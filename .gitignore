@@ -32,6 +32,7 @@ src-tauri/gen/
 # PyInstaller 构建产物
 build/
 dist/
+.pyinstaller-work-*/
 src-tauri/binaries/
 
 # 直接运行版桌面应用产物（复制到项目根目录，由构建脚本生成）

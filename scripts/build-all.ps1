@@ -9,10 +9,12 @@ Set-Location $Root
 
 Write-Host "===== 步骤1/3: 打包后端 ====="
 & (Join-Path $PSScriptRoot "build-backend.ps1") -BundleLocalEmbedding
+if ($LASTEXITCODE -ne 0) { throw "后端构建失败（退出码 $LASTEXITCODE）" }
 
 Write-Host "===== 步骤2/3: 构建 Tauri 桌面应用 ====="
 # 显式调用 npm.cmd，避免 Windows PowerShell 执行策略拦截 npm.ps1。
 & npm.cmd run tauri build
+if ($LASTEXITCODE -ne 0) { throw "Tauri 构建失败（退出码 $LASTEXITCODE）" }
 
 Write-Host "===== 步骤3/3: 复制直接运行版到项目根目录 ====="
 $appExe = Join-Path $Root "src-tauri\target\release\flora-editor.exe"
