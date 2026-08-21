@@ -1,0 +1,2 @@
+# 供 Linux 环境（CloudStudio 沙盒等）执行的 shell 脚本必须保持 LF 行尾
+*.sh text eol=lf
