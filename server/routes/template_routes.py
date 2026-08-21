@@ -19,6 +19,7 @@ from services.template_service import (
 )
 from services.prompt_assembler import get_templates_by_category
 from services.errors import friendly_error_message
+from database.starter_templates import create_missing_starter_templates
 
 template_bp = Blueprint('templates', __name__, url_prefix='/api/templates')
 
@@ -137,6 +138,20 @@ def remove_all_templates():
         return jsonify({'success': True, 'deleted': True})
     except TemplateServiceError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': friendly_error_message(e)}), 500
+
+
+@template_bp.route('/starter', methods=['POST'])
+def add_starter_templates():
+    """按用户请求补齐内置示例模板。"""
+    try:
+        created = create_missing_starter_templates()
+        return jsonify({
+            'success': True,
+            'created': len(created),
+            'data': [template.to_dict() for template in created],
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': friendly_error_message(e)}), 500
 

@@ -22,7 +22,7 @@ export async function loadTemplatesList() {
     }
 }
 
-/** 渲染模板列表（含搜索过滤与删除全部按钮） */
+/** 渲染模板列表（含搜索过滤与示例/删除按钮） */
 function renderTemplateList(templates) {
     const container = $('#template-list');
     const query = state.templateSearch.trim().toLowerCase();
@@ -32,17 +32,11 @@ function renderTemplateList(templates) {
         )
     ) : templates;
 
-    if (templates.length === 0) {
-        container.innerHTML = `<p style="text-align:center;padding:40px;color:var(--text-muted);">
-            该分类下暂无模板，点击左侧"新建模板"添加
-        </p>`;
-        return;
-    }
-
     container.innerHTML = `<div class="list-toolbar">
         <input id="template-search" class="input-text" type="search"
             value="${escapeHtml(state.templateSearch)}" placeholder="搜索名称、说明或内容">
         <span class="list-count">${filtered.length} / ${templates.length}</span>
+        <button id="btn-create-starter-templates" class="btn btn-outline btn-sm" type="button">生成示例模板</button>
         <button id="btn-delete-all-templates" class="btn btn-danger btn-sm" type="button">🗑 删除全部</button>
     </div><div id="template-list-results"></div>`;
     const results = $('#template-list-results', container);
@@ -67,6 +61,7 @@ function renderTemplateList(templates) {
         search.focus();
         search.setSelectionRange(search.value.length, search.value.length);
     });
+    safeBind('#btn-create-starter-templates', 'click', createStarterTemplates);
     safeBind('#btn-delete-all-templates', 'click', deleteAllTemplates);
 
     // 绑定点击事件
@@ -76,6 +71,18 @@ function renderTemplateList(templates) {
             openTemplateEditor(id);
         });
     });
+}
+
+/** 按用户请求补齐内置示例模板。 */
+async function createStarterTemplates() {
+    try {
+        const data = await api('/api/templates/starter', { method: 'POST' });
+        toast(data.created > 0 ? `已生成 ${data.created} 个示例模板` : '示例模板已存在');
+        await loadTemplatesList();
+        await loadWorkspaceTemplates();
+    } catch (e) {
+        toast('生成示例模板失败: ' + e.message, 'error');
+    }
 }
 
 // ==================== 分类筛选 / 新建 / 导入导出 ====================

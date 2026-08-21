@@ -24,7 +24,10 @@ safeBind('#deai-enabled', 'change', function () {
 
     if (this.checked && !textarea.value) {
         api('/api/generation/default-deai-prompt').then(data => {
-            textarea.value = data.data;
+            if (this.checked && !textarea.value) {
+                textarea.value = data.data;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
         }).catch(() => {});
     }
 });
