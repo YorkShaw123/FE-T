@@ -1,6 +1,6 @@
 [package]
 name = "flora-editor"
-version = "1.0.0"
+version = "1.0.1"
 description = "雨生编辑器 - AI文字创作助手桌面版"
 authors = ["Flora"]
 edition = "2021"
