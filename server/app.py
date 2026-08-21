@@ -1,5 +1,5 @@
 """
-Flora Editor - AI文字创作助手
+雨生编辑器 - AI文字创作助手
 主应用入口
 """
 import os
@@ -11,6 +11,9 @@ import threading
 import time
 import webbrowser
 from urllib.parse import urlsplit
+
+
+APP_DISPLAY_NAME = '雨生编辑器'
 
 # 路径解析必须先于 config 导入执行，因为 config 的 SQLALCHEMY_DATABASE_URI
 # 在类定义时求值（对原始运行方式无影响）：
@@ -51,7 +54,7 @@ def _ensure_web_port_available(host, port):
     except OSError:
         return
     raise RuntimeError(
-        f'本机测试端口 {host}:{port} 已被占用。请先关闭旧的 Flora Editor '
+        f'本机测试端口 {host}:{port} 已被占用。请先关闭旧的 {APP_DISPLAY_NAME} '
         '开发服务，再重新启动；否则浏览器可能混合加载新旧前端资源。'
     )
 
@@ -59,17 +62,33 @@ def _ensure_web_port_available(host, port):
 # 项目根目录（server/ 的上级），用于定位旧版源码运行数据目录
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 COMMUNITY_PROMPTS_URL = 'https://www.aishort.top/community-prompts'
+HELP_LINKS = {
+    'deepseek': 'https://api-docs.deepseek.com/',
+    'openai': 'https://platform.openai.com/docs/overview',
+    'moonshot': 'https://platform.moonshot.cn/docs/intro',
+    'qwen': 'https://help.aliyun.com/zh/model-studio/getting-started/what-is-model-studio',
+    'zhipu': 'https://docs.bigmodel.cn/cn/guide/start/quick-start',
+    'gemini': 'https://ai.google.dev/gemini-api/docs',
+    'xai': 'https://docs.x.ai/docs/overview',
+    'siliconflow': 'https://docs.siliconflow.cn/',
+    'aishort': COMMUNITY_PROMPTS_URL,
+}
+
+
+def _open_external_url(url):
+    """使用系统默认浏览器打开由服务端白名单提供的 URL。"""
+    try:
+        if hasattr(os, 'startfile'):
+            os.startfile(url)
+            return True
+        return bool(webbrowser.open_new_tab(url))
+    except OSError:
+        return False
 
 
 def _open_community_prompts():
     """使用系统默认浏览器打开固定提示词库，不接受外部 URL 参数。"""
-    try:
-        if hasattr(os, 'startfile'):
-            os.startfile(COMMUNITY_PROMPTS_URL)
-            return True
-        return bool(webbrowser.open_new_tab(COMMUNITY_PROMPTS_URL))
-    except OSError:
-        return False
+    return _open_external_url(COMMUNITY_PROMPTS_URL)
 
 
 def _migrate_legacy_data():
@@ -200,7 +219,7 @@ def create_app(config_name=None):
     # 健康检查（mode 字段返回当前运行形态，便于前端/运维识别）
     @app.route('/api/health')
     def health():
-        return {'status': 'ok', 'app': 'Flora Editor', 'mode': _resolve_run_mode()}
+        return {'status': 'ok', 'app': APP_DISPLAY_NAME, 'mode': _resolve_run_mode()}
 
     @app.post('/api/system/shutdown')
     def shutdown_desktop_sidecar():
@@ -216,6 +235,16 @@ def create_app(config_name=None):
         if not _open_community_prompts():
             return jsonify({'success': False, 'error': '无法打开系统默认浏览器'}), 502
         return jsonify({'success': True, 'data': {'url': COMMUNITY_PROMPTS_URL}})
+
+    @app.post('/api/system/open-help-link/<link_key>')
+    def open_help_link(link_key):
+        """打开帮助页中的固定官方入口，拒绝客户端提供任意 URL。"""
+        url = HELP_LINKS.get(link_key)
+        if not url:
+            return jsonify({'success': False, 'error': '帮助链接不存在'}), 404
+        if not _open_external_url(url):
+            return jsonify({'success': False, 'error': '无法打开系统默认浏览器'}), 502
+        return jsonify({'success': True, 'data': {'url': url}})
 
     return app
 
@@ -252,15 +281,15 @@ if __name__ == '__main__':
     if run_mode == 'web':
         # Web 模式仅用于本机开发测试（桌面版为唯一产品形态）
         print("=" * 60)
-        print("  Flora Editor - AI文字创作助手")
+        print(f"  {APP_DISPLAY_NAME} - AI文字创作助手")
         print("  本机测试模式（不支持远程访问或自托管）")
         print(f"  访问地址: http://{host}:{port}")
-        print("  普通用户请运行根目录的 Flora Editor.exe（桌面版，免环境配置）")
+        print(f"  普通用户请运行根目录的 {APP_DISPLAY_NAME}.exe（桌面版，免环境配置）")
         print("  安全限制: 服务固定监听 127.0.0.1；仅 FLORA_PORT 可覆盖端口")
         print("=" * 60)
     else:
         # 桌面分发模式：由 Tauri 主程序以 Sidecar 方式拉起，生命周期由其管理
-        print(f"[desktop] Flora 后端已就绪（由主程序管理）: http://{host}:{port}")
+        print(f"[desktop] {APP_DISPLAY_NAME}后端已就绪（由主程序管理）: http://{host}:{port}")
     # 源码入口是本机开发模式，默认启用重载以便服务代码修改后立即生效；
     # 打包后的 Sidecar 必须禁用重载，避免派生进程导致 Tauri 管理失控。
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'

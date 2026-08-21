@@ -1,8 +1,8 @@
-# Flora Editor 架构说明
+# 雨生编辑器（Flora Editor）架构说明
 
 ## 产品边界
 
-Flora Editor 是 Windows 本地桌面应用。Tauri 2 + Flask Sidecar 是正式产品架构，浏览器入口仅用于 `127.0.0.1` 上的开发测试。
+雨生编辑器（Flora Editor）是 Windows 本地桌面应用。Tauri 2 + Flask Sidecar 是正式产品架构，浏览器入口仅用于 `127.0.0.1` 上的开发测试。
 
 ## 运行结构
 

@@ -37,6 +37,7 @@ src-tauri/binaries/
 
 # 直接运行版桌面应用产物（复制到项目根目录，由构建脚本生成）
 /Flora Editor.exe
+/雨生编辑器.exe
 /flora-server.exe
 
 # 运行时产物

@@ -29,7 +29,7 @@ class PromptTemplate(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     # 风格参考强度，仅对 example 分类生效：light / medium / strict
     style_strength = db.Column(db.String(20), nullable=False, default='light')
-    # 兼容旧数据库保留；示例模板产品功能已移除，迁移会统一重置为 False。
+    # 兼容旧数据库保留；首次启动案例也作为普通模板写入，不依赖此字段。
     is_sample = db.Column(db.Boolean, nullable=False, default=False)
     # 排序权重
     sort_order = db.Column(db.Integer, default=0)

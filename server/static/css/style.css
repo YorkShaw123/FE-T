@@ -776,11 +776,12 @@ body.result-editor-open { overflow: hidden; }
 .onboarding-page ol { display: grid; gap: 8px; margin: 0; padding-left: 24px; }
 .onboarding-page code { padding: 2px 5px; border-radius: 5px; color: var(--jade); background: var(--jade-soft); }
 .onboarding-links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.onboarding-links a {
+.onboarding-links a, .onboarding-links button {
     padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px;
-    color: var(--jade); background: var(--surface-2); text-decoration: none;
+    color: var(--jade); background: var(--surface-2); text-decoration: none; text-align: left; cursor: pointer;
 }
-.onboarding-links a:hover { border-color: var(--jade); background: var(--jade-soft); }
+.onboarding-links a:hover, .onboarding-links button:hover { border-color: var(--jade); background: var(--jade-soft); }
+.onboarding-links button:disabled { opacity: .55; cursor: wait; }
 .onboarding-footer {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
     padding: 14px 18px; border-top: 1px solid var(--line); background: var(--surface-2);

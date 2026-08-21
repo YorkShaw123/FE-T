@@ -23,7 +23,7 @@ def test_health_endpoint_reports_local_web_mode():
     assert response.status_code == 200
     assert response.get_json() == {
         "status": "ok",
-        "app": "Flora Editor",
+        "app": "雨生编辑器",
         "mode": "web",
     }
 
@@ -95,6 +95,51 @@ def test_community_prompt_entry_opens_fixed_url(monkeypatch):
         'data': {'url': 'https://www.aishort.top/community-prompts'},
     }
     assert opened == ['https://www.aishort.top/community-prompts']
+
+
+def test_help_links_open_only_server_allowlisted_urls(monkeypatch):
+    import app as app_module
+
+    opened = []
+    monkeypatch.setattr(
+        app_module,
+        '_open_external_url',
+        lambda url: opened.append(url) or True,
+    )
+    client = create_app('production').test_client()
+
+    response = client.post('/api/system/open-help-link/deepseek')
+    unknown = client.post('/api/system/open-help-link/not-allowed')
+
+    assert response.status_code == 200
+    assert response.get_json()['data']['url'] == 'https://api-docs.deepseek.com/'
+    assert unknown.status_code == 404
+    assert opened == ['https://api-docs.deepseek.com/']
+
+
+def test_starter_templates_are_seeded_once_and_remain_deleted():
+    from database import db
+    from database.models import ProjectSetting, PromptTemplate
+    from database.starter_templates import (
+        STARTER_TEMPLATES_SETTING_KEY,
+        ensure_starter_templates,
+    )
+
+    app = create_app('production')
+    with app.app_context():
+        templates = PromptTemplate.query.order_by(PromptTemplate.sort_order).all()
+        assert [(item.category, item.name) for item in templates] == [
+            ('character', '示例人物：推云童子雨生'),
+            ('plot', '示例剧情：雨落万物生'),
+        ]
+        assert all(item.is_active and not item.is_sample for item in templates)
+        assert ProjectSetting.get_value(STARTER_TEMPLATES_SETTING_KEY) == '1'
+
+        PromptTemplate.query.delete()
+        db.session.commit()
+
+        assert ensure_starter_templates() is False
+        assert PromptTemplate.query.count() == 0
 
 
 def test_template_editor_exposes_community_prompt_entry():
@@ -257,10 +302,35 @@ def test_onboarding_help_controls_are_present_once():
         "btn-next-onboarding",
     ):
         assert html.count(f'id="{element_id}"') == 1
-    assert "陪你把一个想法写成可以继续打磨的文章" in onboarding_js
+    assert "陪你把零散想法写成可以继续打磨的文章" in onboarding_js
     assert "04 生成初稿" in onboarding_js
     assert "06 风格参考" in onboarding_js
+    assert "推云童子雨生" in onboarding_js
+    for link_key in (
+        'deepseek', 'openai', 'moonshot', 'qwen', 'zhipu',
+        'gemini', 'xai', 'siliconflow', 'aishort',
+    ):
+        assert f'data-help-link="{link_key}"' in onboarding_js
     assert "{{变量名}}" not in onboarding_js
+
+
+def test_chinese_product_name_is_used_by_web_and_tauri_build_contracts():
+    import json
+
+    html = create_app('production').test_client().get('/').get_data(as_text=True)
+    tauri_config = json.loads(
+        (PROJECT_ROOT / 'src-tauri' / 'tauri.conf.json').read_text(encoding='utf-8'),
+    )
+    build_script = (PROJECT_ROOT / 'scripts' / 'build-all.ps1').read_text(
+        encoding='utf-8',
+    )
+
+    assert '<title>雨生编辑器 - AI文字创作助手</title>' in html
+    assert '<h1 class="logo">雨生<span>编辑器</span></h1>' in html
+    assert tauri_config['productName'] == '雨生编辑器'
+    assert tauri_config['mainBinaryName'] == '雨生编辑器'
+    assert tauri_config['app']['windows'][0]['title'].startswith('雨生编辑器')
+    assert '$destApp = Join-Path $Root "雨生编辑器.exe"' in build_script
 
 
 def test_workspace_template_variable_ui_is_fully_removed():

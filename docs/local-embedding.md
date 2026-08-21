@@ -2,7 +2,7 @@
 
 ## 当前方案
 
-Flora Editor 的 Style Engine 不要求远程 Embedding。默认语义辅助后端是 `BAAI/bge-small-zh-v1.5` 的 ONNX CPU 推理，模型维度为 512；模型 Session 在进程内缓存，不会为每次请求重新加载。
+雨生编辑器的 Style Engine 不要求远程 Embedding。默认语义辅助后端是 `BAAI/bge-small-zh-v1.5` 的 ONNX CPU 推理，模型维度为 512；模型 Session 在进程内缓存，不会为每次请求重新加载。
 
 远程硅基流动 `BAAI/bge-m3`（1024 维）仍作为手动选择和旧索引兼容方案保留。远程模式需要硅基流动 API Key。本地与远程后端不会混用向量。
 

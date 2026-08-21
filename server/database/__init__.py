@@ -44,5 +44,7 @@ def init_db(app):
         )
         db.create_all()
         apply_sqlite_migrations(db)
+        from database.starter_templates import ensure_starter_templates
+        ensure_starter_templates()
 
     print(f'[Flora] 数据库已就绪: {db_path}')

@@ -17,9 +17,9 @@ Write-Host "===== 步骤2/3: 构建 Tauri 桌面应用 ====="
 if ($LASTEXITCODE -ne 0) { throw "Tauri 构建失败（退出码 $LASTEXITCODE）" }
 
 Write-Host "===== 步骤3/3: 复制直接运行版到项目根目录 ====="
-$appExe = Join-Path $Root "src-tauri\target\release\flora-editor.exe"
+$appExe = Join-Path $Root "src-tauri\target\release\雨生编辑器.exe"
 $serverExe = Join-Path $Root "src-tauri\binaries\flora-server-x86_64-pc-windows-msvc.exe"
-$destApp = Join-Path $Root "Flora Editor.exe"
+$destApp = Join-Path $Root "雨生编辑器.exe"
 # 注意：Tauri 运行时按「exe 同目录 + 无 target triple 后缀」查找 sidecar，
 # 因此根目录必须命名为 flora-server.exe
 $destServer = Join-Path $Root "flora-server.exe"

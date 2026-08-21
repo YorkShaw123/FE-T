@@ -48,7 +48,7 @@ npm run tauri:build
 |---|---|
 | PyInstaller 原始后端 | `dist\flora-server.exe` |
 | Tauri Sidecar | `src-tauri\binaries\flora-server-x86_64-pc-windows-msvc.exe` |
-| 直接运行版 | 根目录 `Flora Editor.exe` + `flora-server.exe` |
+| 直接运行版 | 根目录 `雨生编辑器.exe` + `flora-server.exe` |
 | NSIS 安装包 | `src-tauri\target\release\bundle\nsis\` |
 
 两个直接运行版 EXE 必须位于同一目录。Tauri 主程序负责窗口、随机端口和生命周期，Sidecar 负责 Flask、业务逻辑和本地数据访问。

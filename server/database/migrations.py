@@ -16,8 +16,8 @@ def apply_sqlite_migrations(db):
             "ALTER TABLE prompt_templates "
             "ADD COLUMN is_sample BOOLEAN NOT NULL DEFAULT 0"
         ))
-    # 示例模板功能已移除：保留兼容字段以避免破坏性重建 SQLite 表，
-    # 并将历史示例无损转换为可编辑的普通模板。
+    # 不再区分不可编辑的“系统示例”：保留兼容字段以避免破坏性重建，
+    # 并将历史示例无损转换为可编辑、可删除的普通模板。
     db.session.execute(db.text(
         "UPDATE prompt_templates SET is_sample = 0 WHERE is_sample != 0"
     ))

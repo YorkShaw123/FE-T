@@ -1,43 +1,89 @@
-import { $ } from './utils.js';
+import { $, api, toast } from './utils.js';
 
 const PAGES = [
     {
-        title: '欢迎来到 Flora Editor',
+        title: '欢迎来到雨生编辑器',
         html: `
-            <p><strong>Flora Editor 会把你准备的人物、世界、剧情和文风要求整理成一条清楚的生成链，陪你把一个想法写成可以继续打磨的文章。</strong></p>
-            <p>你不需要先弄懂复杂的提示词工程。准备好想写的内容，选择模型，Flora 会在每一步告诉你正在做什么。</p>`,
+            <p><strong>雨生编辑器会把人物、世界、剧情和文风要求整理成一条看得见的生成链，陪你把零散想法写成可以继续打磨的文章。</strong></p>
+            <p>它不会替你决定故事，而是帮助你保存设定、组合写作要求、调用你选择的大模型，并把初稿与修改结果留在本机。</p>
+            <p>你不需要先学会复杂的提示词工程。第一次使用时，可以直接启用自带的“推云童子雨生”和“雨落万物生”两个案例模板，填写 API 密钥后开始生成。</p>`,
     },
     {
-        title: '第一次生成，只要三步',
+        title: '用示例完成第一次生成',
         html: `
             <ol>
-                <li>到<strong>模板管理</strong>写下人物、背景、剧情或其他要求，并保存模板。</li>
-                <li>回到工作台，在左侧开启本次要用的模板；在顶栏选择模型并输入对应平台的 API 密钥。</li>
-                <li>点击<strong>生成文章</strong>。标题、提示词编排、风格卡和前置文章都可以按需要再补充。</li>
+                <li>打开<strong>模板管理</strong>，查看“示例人物：推云童子雨生”和“示例剧情：雨落万物生”。它们是普通模板，可以修改或删除。</li>
+                <li>回到<strong>工作台</strong>，点击左侧模板卡片启用它们。圆点亮起表示本次生成会使用该模板。</li>
+                <li>在顶栏选择服务商和模型，填入该平台签发的 API Key，再点击<strong>生成文章</strong>。</li>
             </ol>
-            <p>模板就是可重复使用的写作说明。内容写清楚即可，不需要特殊占位符。</p>`,
+            <p>示例只在数据库第一次初始化时加入一次。删除后不会在下次启动时重新出现，也不会覆盖你后来创建的模板。</p>`,
+    },
+    {
+        title: '怎样写一个好用的模板',
+        html: `
+            <p>模板是可以反复使用的写作说明。人物模板适合写身份、性格、关系和行为边界；背景模板写时代、地点与规则；剧情模板写目标、冲突、转折和结局方向。</p>
+            <p>尽量写清楚“必须保留什么”和“不要出现什么”，避免只写“写得好一点”这类模糊要求。模板内容会按原文进入生成链，不需要特殊占位符。</p>
+            <p>同一分类可以保存多个模板。工作台只会使用当前亮起的模板，因此你可以保存不同角色或剧情方案，按本次创作需要组合。</p>
+            <p>需要寻找提示词灵感时，可从模板编辑器或帮助页打开 AiShort 社区；请在使用社区内容前自行检查其适用范围与安全性。</p>`,
+    },
+    {
+        title: '选择模型并填写 API Key',
+        html: `
+            <p>API Key 必须来自当前选择的服务商，不能把 DeepSeek 的密钥用于 OpenAI，也不能把硅基流动密钥用于 Kimi 官方接口。密钥只随当前请求发送，不写入数据库。</p>
+            <p>“思考模式”是否能开启由模型能力决定。“高级”面板可调整 temperature、top_p、max_tokens 等参数；不熟悉时保留默认值通常更稳妥。</p>
+            <p>模型名称、价格、上下文长度和参数支持可能由厂商调整。遇到鉴权或参数错误时，应先查看当前厂商官方文档。</p>
+            <div class="onboarding-links">
+                <button type="button" data-help-link="deepseek">DeepSeek API 文档 ↗</button>
+                <button type="button" data-help-link="openai">OpenAI API 文档 ↗</button>
+                <button type="button" data-help-link="moonshot">Kimi API 文档 ↗</button>
+                <button type="button" data-help-link="qwen">通义千问 API 文档 ↗</button>
+            </div>`,
     },
     {
         title: '看懂工作台生成链',
         html: `
-            <p><strong>01 提示词编排、02 风格卡、03 上下文输入</strong>共同准备初稿所需信息，然后进入<strong>04 生成初稿</strong>。</p>
-            <p><strong>05 语言自然化</strong>和<strong>06 风格参考</strong>都是可选的二次处理。开启后，它们会在初稿完成之后继续修改，而不是混进第一次生成。</p>
-            <p>初稿显示在 04，二次处理后的版本显示在<strong>07 最终成稿</strong>。节点里的转圈提示和流动连线表示当前正在执行的步骤。</p>`,
+            <p><strong>01 提示词编排、02 风格卡、03 上下文输入</strong>共同准备初稿信息，然后进入<strong>04 生成初稿</strong>。没有启用的节点不会参与处理。</p>
+            <p>右侧<strong>提示词预览</strong>用于生成前核对初稿提示词与 Token 预算，不会调用 AI。内容很多时会显示加载状态，等待预览稳定后再检查即可。</p>
+            <p><strong>05 语言自然化</strong>和<strong>06 风格参考</strong>是初稿完成后的可选二次处理。节点转圈和流动虚线表示当前正在执行；生成完成后点击 04 或 07 才会展开正文，避免长文章挤乱画布。</p>
+            <p>如果 05 和 06 都未开启，04 的初稿就是本次结果；开启任一处理后，处理完成的版本会进入<strong>07 最终成稿</strong>。</p>`,
     },
     {
-        title: '风格卡与文风语料有什么不同？',
+        title: '风格卡与文风语料的区别',
         html: `
-            <p><strong>风格卡</strong>来自“范例文章”模板，是一份对表达习惯的概括；启用智能风格链后，它参与初稿提示词。</p>
-            <p><strong>文风语料</strong>在“文风管理”中导入。开启 06 后，系统会在初稿完成后从所选语料库检索 3～5 个真实片段，再做一次受约束的风格改写。</p>
-            <p>两者可以单独使用，也可以配合使用。语义向量是可选辅助；缺少本地模型时，文风检索仍会降级到纯本地 Style Engine。</p>`,
+            <p><strong>风格卡</strong>来自“范例文章”模板。系统先概括范例的视角、节奏和语言习惯，再把这些要求加入初稿提示词，适合少量参考文章。</p>
+            <p><strong>文风语料</strong>在“文风管理”中导入，适合较大的 TXT、DOC 或 DOCX 文本。开启 06 后，系统在初稿完成后检索 3～5 个片段，并要求模型只参考语言组织，不复制人物、地点和剧情。</p>
+            <p>Style Engine 的句长、标点和功能词分析在本机完成。语义向量只是辅助；本地 ONNX 模型未安装时，检索会自动降级，不会让整个功能失效。</p>
+            <p>请只导入你有权使用的文本。任何自动分数都不能等同于人工判断，最终仍建议自己阅读并修改成稿。</p>`,
     },
     {
-        title: '模型、预览与生成结果',
+        title: '自然化、风格参考与结果编辑',
         html: `
-            <p><strong>API 密钥</strong>只随本次请求使用，不写入数据库。密钥、提供商和模型必须来自同一个平台；“高级”可以调整常用采样参数。</p>
-            <p>右侧<strong>提示词预览</strong>用于生成前检查初稿提示词和 Token 预算，不会调用 AI。生成时，04 显示初稿进度；若开启自然化或风格参考，07 会继续显示处理进度。</p>
-            <p>完成后点击 04 或 07 查看正文。<strong>生成记录</strong>会保存结果，<strong>全屏编辑</strong>可继续修改、续写或比较版本。</p>
-            <p>需要再次查看介绍时，点击“文章生成链路”右侧的<strong>帮助</strong>。</p>`,
+            <p><strong>语言自然化</strong>会读取初稿和你填写的修改要求，再调用一次模型。提示词应说明要修正的语言问题，同时明确保持剧情、事实和人物关系。</p>
+            <p><strong>风格参考</strong>会使用文风管理中选中的语料库检索片段，再做一次受约束改写。弹窗会显示实际采用的参考片段，便于判断检索是否合理。</p>
+            <p>每次额外处理都会增加 API 时间和 Token 消耗。若初稿已经满意，可以关闭二次处理。完成后可进入全屏编辑器继续续写、重写、扩写、润色或比较版本。</p>
+            <p><strong>生成记录</strong>保存在本机，可置顶、删除或清空；API 中断时，系统可能保留未完成内容，方便你判断是否续写。</p>`,
+    },
+    {
+        title: '本地数据、模型与故障排查',
+        html: `
+            <p>模板、文风索引和生成记录默认保存在 <code>%USERPROFILE%\.flora-editor\data\flora.db</code>。卸载程序默认保留这些数据，彻底清理前请先备份。</p>
+            <p>本地 Embedding 模型保存在 <code>%USERPROFILE%\.flora-editor\models\</code>，不会塞进 SQLite。下载模型需要联网，但没有模型时仍可使用不含语义辅助的本地文风检索。</p>
+            <p>桌面版由“雨生编辑器.exe”和“flora-server.exe”共同运行，两者必须处于同一目录。启动超时或双击无反应时，请检查文件是否齐全，以及杀毒软件是否拦截后端。</p>
+            <p>开发浏览器入口只监听 <code>127.0.0.1</code>。它用于本机调试，不是可公开访问的 Web 服务。</p>`,
+    },
+    {
+        title: '官方文档与提示词入口',
+        html: `
+            <p>下面的按钮会调用系统默认浏览器打开固定官方地址，不会把任意网址交给后端。服务商页面可能改版，请以其最新说明、价格和模型列表为准。</p>
+            <div class="onboarding-links">
+                <button type="button" data-help-link="zhipu">智谱 GLM 文档 ↗</button>
+                <button type="button" data-help-link="gemini">Google Gemini 文档 ↗</button>
+                <button type="button" data-help-link="xai">xAI Grok 文档 ↗</button>
+                <button type="button" data-help-link="siliconflow">硅基流动文档 ↗</button>
+                <button type="button" data-help-link="aishort">AiShort 社区提示词 ↗</button>
+            </div>
+            <p>社区提示词只能作为灵感来源。复制前请检查是否包含与你的任务无关、过时或不安全的要求，也不要在社区页面粘贴 API Key、私人语料或未公开作品。</p>
+            <p>以后需要重看这些说明，随时点击工作台标题右侧的<strong>帮助</strong>按钮。</p>`,
     },
 ];
 
@@ -113,6 +159,20 @@ export function initOnboarding() {
             return;
         }
         closeToHelp();
+    });
+    page.addEventListener('click', async event => {
+        const linkButton = event.target.closest('[data-help-link]');
+        if (!linkButton) return;
+        linkButton.disabled = true;
+        try {
+            await api(`/api/system/open-help-link/${encodeURIComponent(linkButton.dataset.helpLink)}`, {
+                method: 'POST',
+            });
+        } catch (error) {
+            toast(`打开帮助链接失败：${error.message}`, 'error');
+        } finally {
+            linkButton.disabled = false;
+        }
     });
     cancel?.addEventListener('click', closeToHelp);
     close?.addEventListener('click', closeToHelp);

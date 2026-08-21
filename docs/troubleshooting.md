@@ -2,7 +2,7 @@
 
 ## 桌面程序无法启动
 
-确认 `Flora Editor.exe` 与 `flora-server.exe` 在同一目录。若提示后端启动超时，先关闭残留的 `flora-server.exe`，再检查杀毒软件是否拦截 Sidecar。
+确认 `雨生编辑器.exe` 与 `flora-server.exe` 在同一目录。若提示后端启动超时，先关闭残留的 `flora-server.exe`，再检查杀毒软件是否拦截 Sidecar。
 
 本机开发时可直接运行：
 
