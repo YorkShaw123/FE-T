@@ -26,13 +26,19 @@ def test_generate_uses_default_max_tokens_without_network(monkeypatch):
 
     monkeypatch.setattr(client, "_generate_sync", fake_generate_sync)
 
+    messages = [
+        {"role": "system", "content": Config.GENERATION_SYSTEM_PROMPT},
+        {"role": "user", "content": "写故事"},
+    ]
     result = client.generate(
         model="deepseek-v4-pro",
-        messages=[{"role": "user", "content": "写故事"}],
+        messages=messages,
     )
 
     assert result["content"] == "正文"
     assert captured["max_tokens"] == Config.DEFAULT_MAX_TOKENS
+    assert captured["messages"] == messages
+    assert captured["messages"][0]["role"] == "system"
 
 
 def test_stream_reports_length_finish_reason(monkeypatch):

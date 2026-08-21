@@ -117,7 +117,7 @@ def test_help_links_open_only_server_allowlisted_urls(monkeypatch):
     assert opened == ['https://api-docs.deepseek.com/']
 
 
-def test_starter_templates_are_seeded_once_and_remain_deleted():
+def test_starter_templates_are_seeded_once_and_can_be_restored_by_api():
     from database import db
     from database.models import ProjectSetting, PromptTemplate
     from database.starter_templates import (
@@ -129,10 +129,15 @@ def test_starter_templates_are_seeded_once_and_remain_deleted():
     with app.app_context():
         templates = PromptTemplate.query.order_by(PromptTemplate.sort_order).all()
         assert [(item.category, item.name) for item in templates] == [
-            ('character', '示例人物：推云童子雨生'),
-            ('plot', '示例剧情：雨落万物生'),
+            ('character', '示例人物：雨生'),
+            ('plot', '示例剧情：草木知春'),
         ]
         assert all(item.is_active and not item.is_sample for item in templates)
+        assert "黑色小葫芦" in templates[0].content
+        assert "认真倾听、分辨要求并承担责任" in templates[0].content
+        assert "风伯雨师" in templates[1].content
+        assert "雷公电母" in templates[1].content
+        assert "不要直接出现 AI、程序、提示词或编辑器" in templates[1].content
         assert ProjectSetting.get_value(STARTER_TEMPLATES_SETTING_KEY) == '1'
 
         PromptTemplate.query.delete()
@@ -140,6 +145,20 @@ def test_starter_templates_are_seeded_once_and_remain_deleted():
 
         assert ensure_starter_templates() is False
         assert PromptTemplate.query.count() == 0
+
+        response = app.test_client().post('/api/templates/starter')
+        assert response.status_code == 200
+        assert response.get_json()['created'] == 2
+        restored = PromptTemplate.query.order_by(PromptTemplate.sort_order).all()
+        assert [(item.category, item.name) for item in restored] == [
+            ('character', '示例人物：雨生'),
+            ('plot', '示例剧情：草木知春'),
+        ]
+
+        duplicate = app.test_client().post('/api/templates/starter')
+        assert duplicate.status_code == 200
+        assert duplicate.get_json()['created'] == 0
+        assert PromptTemplate.query.count() == 2
 
 
 def test_template_editor_exposes_community_prompt_entry():
@@ -275,13 +294,17 @@ def test_embedding_progress_dialog_is_present():
         assert html.count(f'id="{element_id}"') == 1
 
 
-def test_default_deai_prompt_is_empty():
+def test_default_deai_prompt_contains_editable_naturalization_rules():
     response = create_app("production").test_client().get(
         "/api/generation/default-deai-prompt",
     )
 
     assert response.status_code == 200
-    assert response.get_json()["data"] == ""
+    prompt = response.get_json()["data"]
+    assert prompt.startswith("这是一篇需要去除AI写作风格的文章")
+    assert "“然而”、“此外”、“总之”" in prompt
+    assert "“首先”、“其次”、“最后”" in prompt
+    assert prompt.endswith("请尽可能替换而非删除，并确保句子连贯。")
 
 
 def test_onboarding_help_controls_are_present_once():
@@ -305,7 +328,8 @@ def test_onboarding_help_controls_are_present_once():
     assert "陪你把零散想法写成可以继续打磨的文章" in onboarding_js
     assert "04 生成初稿" in onboarding_js
     assert "06 风格参考" in onboarding_js
-    assert "推云童子雨生" in onboarding_js
+    assert "示例人物：雨生" in onboarding_js
+    assert "示例剧情：草木知春" in onboarding_js
     for link_key in (
         'deepseek', 'openai', 'moonshot', 'qwen', 'zhipu',
         'gemini', 'xai', 'siliconflow', 'aishort',

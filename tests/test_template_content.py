@@ -9,6 +9,7 @@ sys.path.insert(0, str(SERVER_DIR))
 
 from services.prompt_assembler import assemble_prompt  # noqa: E402
 from routes.support.generation_request import GenerationRequest  # noqa: E402
+from config import Config  # noqa: E402
 
 
 def test_double_braces_are_plain_template_text():
@@ -32,3 +33,8 @@ def test_legacy_variable_payload_is_ignored_by_generation_request():
     request = GenerationRequest.from_mapping({"variable_values": {"姓名": "林舟"}})
 
     assert not hasattr(request, "variable_values")
+
+
+def test_generation_system_prompt_no_longer_mentions_placeholders():
+    assert "占位符" not in Config.GENERATION_SYSTEM_PROMPT
+    assert "只输出成稿" in Config.GENERATION_SYSTEM_PROMPT
