@@ -8,7 +8,7 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-雨生编辑器是 Flora Editor 的中文产品名。这是一款本地运行的桌面小工具：它把人物、背景、剧情、范例和其他约束整理成可复用模板，通过可视化生成链路组合提示词，并将成稿、模板和文风语料保存在本机。
+雨生编辑器（Flora Editor）是一款本地运行的桌面小工具：它把人物、背景、剧情、范例和其他约束整理成可复用模板，通过可视化生成链路组合提示词，并将成稿、模板和文风语料保存在本机。
 
 项目以 Windows 桌面端为正式产品形态；浏览器地址只用于本机开发测试，不提供 Web、SaaS 或远程自托管能力。
 
