@@ -396,6 +396,10 @@ body.workflow-modal-open { overflow: hidden; }
 .preview-loading-hint { align-items: center; justify-content: center; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 10px; }
 .preview-illustration { display: grid; place-items: center; width: 43px; height: 43px; border: 1px solid var(--line); border-radius: 50%; color: var(--jade); background: var(--surface); box-shadow: 0 0 0 8px var(--jade-glow); }
 .code-preview, .reasoning-content { max-height: 42vh; margin: 14px 0 0; overflow: auto; padding: 15px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink-2); background: var(--bg-deep); font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+.prompt-preview-rewrite-stage { margin-top: 14px; }
+.prompt-preview-rewrite-stage > strong { display: block; color: var(--jade-deep); font-size: 12px; }
+.prompt-preview-rewrite-stage > small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.55; }
+.prompt-preview-rewrite-stage .code-preview { margin-top: 8px; }
 .prompt-preview-meta { margin-top: 10px; color: var(--muted); font-size: 11px; }
 .prompt-preview-runtime-plan { margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 9px; background: var(--surface-2); color: var(--ink-2); font-size: 11px; line-height: 1.65; }
 .prompt-preview-runtime-plan strong { display: block; margin-bottom: 3px; color: var(--jade-deep); }

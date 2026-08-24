@@ -7,8 +7,27 @@ from config import Config
 
 _CJK_PATTERN = re.compile(r'[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]')
 _ASCII_WORD_PATTERN = re.compile(r'[A-Za-z0-9_]+')
-STYLE_REFERENCE_BUDGET_CHUNK_COUNT = 4
+STYLE_REFERENCE_BUDGET_CHUNK_COUNT = 5
 STYLE_REFERENCE_BUDGET_CHARS_PER_CHUNK = 900
+
+_BOLD_REWRITE_REQUIREMENTS = (
+    '允许并要求对表达方式进行大幅度重写：可以大规模删改冗余措辞，拆分或合并句子，'
+    '调整句序与段落结构，重写叙述、对话、动作和心理描写；不要逐句做轻微同义替换。\n'
+    '重写后的文字应与上一版有明显差异，但不得删掉必要信息，不得改变剧情、事实、人物、'
+    '世界观、事件顺序、人物关系、因果关系和用户要求。'
+)
+
+
+def build_deai_rewrite_instruction(deai_prompt=''):
+    """构造语言自然化二次重写指令；正文由调用方作为上一条 assistant 消息传入。"""
+    prompt = str(deai_prompt or Config.DEFAULT_DEAI_PROMPT).strip()
+    return (
+        f'{prompt}\n\n'
+        f'{_BOLD_REWRITE_REQUIREMENTS}\n'
+        '重点清理模板化连接、重复解释、机械总结和僵硬句式，使全文像重新写过，'
+        '而不是只替换几个词。\n'
+        '直接输出重写后的完整文章，不要解释修改内容，不要输出分析或额外说明。'
+    )
 
 
 def build_style_reference_rewrite_instruction(reference_texts):
@@ -19,13 +38,28 @@ def build_style_reference_rewrite_instruction(reference_texts):
         if str(text or '').strip()
     )
     return (
-        '请仅对上一版文章做一次风格参考重写。\n\n'
-        '必须保持：剧情、事实、人物、世界观、已有信息、事件顺序和用户要求。\n'
-        '只允许调整：句式、节奏、标点、语言组织、修辞和段落方式。\n'
+        '请对上一版文章做一次幅度明显的风格参考重写。\n\n'
+        f'{_BOLD_REWRITE_REQUIREMENTS}\n'
+        '应主动重塑句式、节奏、标点、语言组织、修辞和段落方式，使整体语言习惯明显贴近参考片段；'
+        '不要只做少量词语替换。\n'
         '下面的片段只用于参考语言习惯；不得复制其中的人物、地点、事件、专有名词、'
         '独特表达或连续长句，也不得把参考片段的剧情带入文章。\n\n'
         f'<style_references>\n{references}\n</style_references>\n\n'
         '直接输出改写后的完整文章，不要解释修改过程，不要输出分析或额外说明。'
+    )
+
+
+def build_style_reference_preview_instruction():
+    """返回固定指令预览，避免把说明性占位误认为真实检索片段。"""
+    return (
+        '【以下是固定重写要求预览】\n'
+        '初稿完成后，系统才会加入真实检索命中的 3～5 个风格片段，'
+        '并在运行时附加到模型请求；'
+        '本预览不伪造、不展示、也不发送占位片段。\n\n'
+        '请对上一版文章做一次幅度明显的风格参考重写。\n\n'
+        f'{_BOLD_REWRITE_REQUIREMENTS}\n'
+        '应主动重塑句式、节奏、标点、语言组织、修辞和段落方式，'
+        '不要只做少量词语替换。'
     )
 
 
@@ -107,7 +141,7 @@ def calculate_token_budget(
     blocking_phase = 'primary' if status == 'over' else None
 
     if deai_enabled:
-        instruction_tokens = estimate_tokens(deai_prompt or Config.DEFAULT_DEAI_PROMPT)
+        instruction_tokens = estimate_tokens(build_deai_rewrite_instruction(deai_prompt))
         deai_input = primary_input + output_tokens + instruction_tokens + Config.CHAT_MESSAGE_OVERHEAD_TOKENS * 2
         deai = _phase_budget(deai_input, context_window, output_tokens, safety_tokens)
         phases['deai'] = deai

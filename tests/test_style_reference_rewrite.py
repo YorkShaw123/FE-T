@@ -105,7 +105,10 @@ def test_style_reference_retrieves_after_draft_and_rewrites_once(app, monkeypatc
         assert queries[0][1]['corpus_ids'] == (3,)
         assert len(client.calls) == 2
         instruction = client.calls[1]['messages'][-1]['content']
-        for phrase in ('剧情', '事实', '人物', '世界观', '只允许调整', '不得复制', '雨在旧瓦'):
+        for phrase in (
+            '剧情', '事实', '人物', '世界观', '大规模删改',
+            '不要只做少量词语替换', '不得复制', '雨在旧瓦',
+        ):
             assert phrase in instruction
         assert result['style_reference_content'] == '风格参考终稿'
         assert result['final_content'] == '风格参考终稿'
@@ -164,6 +167,8 @@ def test_preview_keeps_corpus_out_of_initial_style_card_prompt(monkeypatch):
     assert preview['initial_prompt'].endswith('仅含 Style Card 的初稿提示')
     assert preview['assembled_prompt'] == preview['initial_prompt']
     assert '<style_references>' not in preview['assembled_prompt']
+    assert '<style_references>' not in preview['style_reference_rewrite_prompt']
+    assert '不发送占位片段' in preview['style_reference_rewrite_prompt']
     assert preview['style_reference_plan']['dynamic'] is True
     assert preview['style_reference_plan']['corpus_ids'] == [7]
     assert (
@@ -286,6 +291,13 @@ def test_generate_stream_http_executes_draft_deai_then_rag_reference(app, monkey
     assert retrieval_queries[0][0] == '自然化运行态'
     assert retrieval_queries[0][1]['corpus_ids'] == (42,)
     assert len(calls) == 3
+    deai_instruction = calls[1]['messages'][-1]['content']
+    style_instruction = calls[2]['messages'][-1]['content']
+    assert '让语言自然一些。' in deai_instruction
+    assert '允许并要求对表达方式进行大幅度重写' in deai_instruction
+    assert '不要逐句做轻微同义替换' in deai_instruction
+    assert '允许并要求对表达方式进行大幅度重写' in style_instruction
+    assert '不要只做少量词语替换' in style_instruction
     assert '雨丝斜斜地落在旧瓦上。' not in str(calls[0]['messages'])
     assert '雨丝斜斜地落在旧瓦上。' not in str(calls[1]['messages'])
     assert '雨丝斜斜地落在旧瓦上。' in str(calls[2]['messages'])
@@ -313,6 +325,8 @@ def test_preview_http_never_executes_rag_retrieval(app, monkeypatch):
         '/api/generation/preview-prompt',
         json={
             'template_ids': [template_id],
+            'deai_enabled': True,
+            'deai_prompt': '删除机械表达。',
             'style_reference_enabled': True,
             'style_corpus_ids': [42],
         },
@@ -322,6 +336,16 @@ def test_preview_http_never_executes_rag_retrieval(app, monkeypatch):
     assert response.status_code == 200
     assert payload['success'] is True
     assert '<style_references>' not in payload['data']['assembled_prompt']
+    assert '删除机械表达。' in payload['data']['deai_rewrite_prompt']
+    assert '允许并要求对表达方式进行大幅度重写' in (
+        payload['data']['deai_rewrite_prompt']
+    )
+    assert '真实检索命中的 3～5 个风格片段' in (
+        payload['data']['style_reference_rewrite_prompt']
+    )
+    assert '不要只做少量词语替换' in (
+        payload['data']['style_reference_rewrite_prompt']
+    )
     assert payload['data']['style_reference_plan'] == {
         'dynamic': True,
         'corpus_ids': [42],

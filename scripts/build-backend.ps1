@@ -16,6 +16,12 @@ $previousBundleSetting = $env:FLORA_BUNDLE_ONNX
 $workDir = Join-Path $Root (".pyinstaller-work-" + [guid]::NewGuid().ToString("N"))
 try {
     $env:FLORA_BUNDLE_ONNX = if ($BundleLocalEmbedding) { "1" } else { "0" }
+    if ($BundleLocalEmbedding) {
+        & $pythonExe -c "import onnxruntime; print('ONNX Runtime:', onnxruntime.__version__)"
+        if ($LASTEXITCODE -ne 0) {
+            throw "桌面端要求打包本地向量运行时，但当前构建环境无法导入 onnxruntime"
+        }
+    }
     # 每次使用独立临时工作目录，避免杀毒软件或旧进程短暂占用上次的 TOC/PKG
     # 文件时错误复用旧产物。dist 仍保持稳定路径，供后续复制。
     & $pythonExe -m PyInstaller flora-server.spec --workpath $workDir --clean --noconfirm

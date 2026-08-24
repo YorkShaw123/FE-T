@@ -15,6 +15,42 @@ from urllib.parse import urlsplit
 
 APP_DISPLAY_NAME = '雨生编辑器'
 
+
+def _project_venv_python():
+    """返回项目虚拟环解释器；源码运行时优先使用它保证依赖一致。"""
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+    candidate = os.path.join(project_root, '.venv', 'Scripts', 'python.exe')
+    return candidate if os.path.isfile(candidate) else None
+
+
+def _restart_in_project_venv_if_needed():
+    """允许在 server/ 中直接执行 `python app.py`。
+
+    PyInstaller Sidecar 必须保持原路径；测试导入此模块时也不会重启。
+    """
+    if getattr(sys, 'frozen', False) or os.environ.get('FLORA_VENV_RESTARTED') == '1':
+        return
+    venv_python = _project_venv_python()
+    if not venv_python:
+        return
+    try:
+        already_using_venv = os.path.samefile(sys.executable, venv_python)
+    except OSError:
+        already_using_venv = os.path.normcase(sys.executable) == os.path.normcase(venv_python)
+    if already_using_venv:
+        return
+    environment = os.environ.copy()
+    environment['FLORA_VENV_RESTARTED'] = '1'
+    os.execve(
+        venv_python,
+        [venv_python, os.path.abspath(__file__), *sys.argv[1:]],
+        environment,
+    )
+
+
+if __name__ == '__main__':
+    _restart_in_project_venv_if_needed()
+
 # 路径解析必须先于 config 导入执行，因为 config 的 SQLALCHEMY_DATABASE_URI
 # 在类定义时求值（对原始运行方式无影响）：
 # - 静态资源（templates/static）：

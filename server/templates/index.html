@@ -296,6 +296,16 @@
                                 <span>不会调用 AI，也不会消耗额度</span>
                             </div>
                             <pre id="prompt-preview-content" class="code-preview" style="display:none;"></pre>
+                            <section id="prompt-preview-deai-stage" class="prompt-preview-rewrite-stage" style="display:none;">
+                                <strong>05 语言自然化 · 第二次模型请求</strong>
+                                <small>初稿完成后，系统会把最新正文与下列指令一起发送给模型。</small>
+                                <pre id="prompt-preview-deai-content" class="code-preview"></pre>
+                            </section>
+                            <section id="prompt-preview-style-stage" class="prompt-preview-rewrite-stage" style="display:none;">
+                                <strong>06 风格参考 · 后续模型请求</strong>
+                                <small>若同时启用语言自然化，这一步会改写自然化后的正文；真实 RAG 片段在运行时填入。</small>
+                                <pre id="prompt-preview-style-content" class="code-preview"></pre>
+                            </section>
                             <div id="prompt-preview-runtime-plan" class="prompt-preview-runtime-plan" style="display:none;"></div>
                             <div id="prompt-preview-fallback" class="prompt-preview-fallback" style="display:none;"></div>
                             <div id="prompt-preview-meta" class="prompt-preview-meta" style="display:none;"></div>

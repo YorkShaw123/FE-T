@@ -24,7 +24,9 @@ from services.generation.records import (  # noqa: F401 (compatibility re-export
 )
 from services.summarizer import should_summarize, summarize_text
 from services.token_budget import (
+    build_deai_rewrite_instruction,
     build_style_reference_rewrite_instruction,
+    build_style_reference_preview_instruction,
     calculate_token_budget,
     format_budget_error,
 )
@@ -33,7 +35,7 @@ from config import Config
 
 
 STYLE_REFERENCE_REWRITE_MAX_ATTEMPTS = 1
-STYLE_REFERENCE_TOP_K = 4
+STYLE_REFERENCE_TOP_K = 5
 _VISIBLE_STORY_TEXT_RE = re.compile(r"[\u3400-\u9fffA-Za-z0-9]")
 
 
@@ -407,18 +409,12 @@ def _generate_sync_flow(
     # 去AI味处理
     deai_content = ''
     if deai_enabled and first_content:
-        deai_prompt_text = deai_prompt or Config.DEFAULT_DEAI_PROMPT
-
         deai_messages = [
             *messages,
             {'role': 'assistant', 'content': first_content},
             {
                 'role': 'user',
-                'content': (
-                    f'{deai_prompt_text}\n\n'
-                    '仅改写上一版文章，不新增设定、不改变事实与情节顺序；'
-                    '直接输出完整终稿，不要解释修改内容。'
-                ),
+                'content': build_deai_rewrite_instruction(deai_prompt),
             },
         ]
 
@@ -569,18 +565,12 @@ def _generate_stream_flow(
         # 去AI味处理（如果需要）
         if deai_enabled and full_content:
             yield {'type': 'status', 'data': 'deai_start'}
-            deai_prompt_text = deai_prompt or Config.DEFAULT_DEAI_PROMPT
-
             deai_messages = [
                 *messages,
                 {'role': 'assistant', 'content': full_content},
                 {
                     'role': 'user',
-                    'content': (
-                        f'{deai_prompt_text}\n\n'
-                        '仅改写上一版文章，不新增设定、不改变事实与情节顺序；'
-                        '直接输出完整终稿，不要解释修改内容。'
-                    ),
+                    'content': build_deai_rewrite_instruction(deai_prompt),
                 },
             ]
 
@@ -862,6 +852,13 @@ def get_assembled_preview(
     return {
         'assembled_prompt': assembled,
         'initial_prompt': initial_assembled,
+        'deai_rewrite_prompt': (
+            build_deai_rewrite_instruction(deai_prompt) if deai_enabled else None
+        ),
+        'style_reference_rewrite_prompt': (
+            build_style_reference_preview_instruction()
+            if style_reference_enabled else None
+        ),
         'style_reference_plan': style_reference_plan,
         'template_count': len(active_templates),
         'char_count': len(assembled),

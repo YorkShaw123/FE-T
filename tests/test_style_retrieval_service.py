@@ -242,6 +242,46 @@ def test_hybrid_search_returns_explainable_style_scores_without_embedding():
             assert len(item["ranking_explanation"]["feature_reasons"]) <= 4
 
 
+def test_explicit_scene_with_too_few_samples_is_broadened_to_fill_results():
+    app = create_app("production")
+    with app.app_context():
+        corpus = StyleCorpus(name="scene-relax")
+        db.session.add(corpus)
+        db.session.flush()
+        payload = json.dumps({
+            "style_feature_version": STYLE_FEATURE_VERSION,
+            "statistics": {"valid_char_count": 1000},
+            "features": make_features(10.0),
+        })
+        for order in range(20):
+            db.session.add(StyleChunk(
+                corpus_id=corpus.id,
+                content=f"参考片段{order}，保持稳定叙述节奏。",
+                content_hash=f"scene-relax-{order}",
+                article_key="scene-relax-article",
+                source_order=order,
+                char_count=24,
+                style_feature_version=STYLE_FEATURE_VERSION,
+                style_features_json=payload,
+                style_window_valid_chars=1000,
+                style_confidence=0.9,
+                scene_type="dialogue" if order == 0 else "narration",
+            ))
+        db.session.commit()
+
+        items, meta = hybrid_search_style(
+            "他问：“你今天还来吗？”",
+            corpus_ids=[corpus.id],
+            scene_type="dialogue",
+            top_k=5,
+        )
+
+        assert len(items) == 5
+        assert meta["relaxed_scene"] is True
+        assert any(item["scene_type"] == "dialogue" for item in items)
+        assert any(item["scene_type"] == "narration" for item in items)
+
+
 def test_debug_feature_reasons_are_limited_ranked_and_explainable():
     raw = make_features(10.0)
     target = make_profile(10.0)

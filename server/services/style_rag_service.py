@@ -673,21 +673,26 @@ def hybrid_search_style(
             f'检索候选超过 {Config.STYLE_SEARCH_MAX_CANDIDATES} 个，请选择更少的语料库或增加过滤条件'
         )
     relaxed_scene = False
-    if not chunks and requested_scene:
-        # 场景硬过滤无候选时放宽场景条件重试，避免风格检索落空
+    if requested_scene and len(chunks) < top_k:
+        # 显式场景样本不足时也要放宽，优先保留同场景片段，再用
+        # 同语料库其他场景补足。场景分数仍会让同场景候选占优。
         relaxed_scene = True
-        query = StyleChunk.query.filter(StyleChunk.is_enabled.is_(True))
+        broad_query = StyleChunk.query.filter(StyleChunk.is_enabled.is_(True))
         if corpus_ids:
-            query = query.filter(StyleChunk.corpus_id.in_(corpus_ids))
+            broad_query = broad_query.filter(StyleChunk.corpus_id.in_(corpus_ids))
         if pacing:
-            query = query.filter(StyleChunk.pacing == pacing)
+            broad_query = broad_query.filter(StyleChunk.pacing == pacing)
         if pov:
-            query = query.filter(StyleChunk.pov == pov)
-        chunks = query.order_by(StyleChunk.id).limit(Config.STYLE_SEARCH_MAX_CANDIDATES + 1).all()
-        if len(chunks) > Config.STYLE_SEARCH_MAX_CANDIDATES:
+            broad_query = broad_query.filter(StyleChunk.pov == pov)
+        broad_chunks = broad_query.order_by(StyleChunk.id).limit(
+            Config.STYLE_SEARCH_MAX_CANDIDATES + 1
+        ).all()
+        if len(broad_chunks) > Config.STYLE_SEARCH_MAX_CANDIDATES:
             raise GenerationError(
                 f'检索候选超过 {Config.STYLE_SEARCH_MAX_CANDIDATES} 个，请选择更少的语料库或增加过滤条件'
             )
+        preferred_ids = {chunk.id for chunk in chunks}
+        chunks = [*chunks, *(chunk for chunk in broad_chunks if chunk.id not in preferred_ids)]
     if not chunks:
         result = ([], {'mode': 'empty', 'reason': '无满足过滤条件的片段'})
         _set_cached_search(cache_key, result)

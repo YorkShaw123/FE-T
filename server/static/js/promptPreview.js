@@ -60,6 +60,26 @@ export function renderStyleReferencePlan(plan) {
     panel.style.display = '';
 }
 
+/** 展示初稿之后真正会发送给模型的两段重写指令。 */
+export function renderRewritePromptPreviews(data) {
+    const stages = [
+        ['#prompt-preview-deai-stage', '#prompt-preview-deai-content', data?.deai_rewrite_prompt],
+        ['#prompt-preview-style-stage', '#prompt-preview-style-content', data?.style_reference_rewrite_prompt],
+    ];
+    stages.forEach(([stageSelector, contentSelector, prompt]) => {
+        const stage = $(stageSelector);
+        const content = $(contentSelector);
+        if (!stage || !content) return;
+        if (!prompt) {
+            stage.style.display = 'none';
+            content.textContent = '';
+            return;
+        }
+        content.textContent = prompt;
+        stage.style.display = '';
+    });
+}
+
 /** 组装提示词预览请求负载 */
 export function buildPromptPreviewPayload() {
     return {
@@ -181,6 +201,7 @@ safeBind('#btn-preview-prompt', 'click', async () => {
         $('#prompt-preview-meta').textContent =
             `${promptModeLabels[previewData.data.prompt_mode] || previewData.data.prompt_mode} · ${previewData.data.message_count} 条消息 · ${previewData.data.template_count} 个模板 · ${previewData.data.char_count.toLocaleString()} 字符${fallback} · Token 为保守估算`;
         renderTokenBudget(previewData.data.token_budget);
+        renderRewritePromptPreviews(previewData.data);
         renderStyleReferencePlan(previewData.data.style_reference_plan);
         renderStyleSelection(previewData.data.style_metadata, previewData.data.style_mode);
         renderStyleFallbackWarning(previewData.data.style_mode, previewData.data.style_metadata);
@@ -203,6 +224,7 @@ safeBind('#btn-close-preview', 'click', () => {
     $('#prompt-preview-content').style.display = 'none';
     $('#prompt-preview-fallback').style.display = 'none';
     $('#prompt-preview-meta').style.display = 'none';
+    renderRewritePromptPreviews(null);
     renderStyleReferencePlan(null);
     $('#token-budget-panel').style.display = 'none';
     const summary = $('#workspace-token-summary');
