@@ -325,7 +325,7 @@ def test_onboarding_help_controls_are_present_once():
         "btn-next-onboarding",
     ):
         assert html.count(f'id="{element_id}"') == 1
-    assert "陪你把零散想法写成可以继续打磨的文章" in onboarding_js
+    assert "用你选择的大模型把想法写成文章" in onboarding_js
     assert "04 生成初稿" in onboarding_js
     assert "06 风格参考" in onboarding_js
     assert "示例人物：雨生" in onboarding_js

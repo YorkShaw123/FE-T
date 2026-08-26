@@ -100,7 +100,7 @@
                                         <h3>结构化消息编排</h3>
                                         <p class="section-description">将系统规则、任务、素材等拆分成独立消息</p>
                                     </div>
-                                    <label class="switch-label" title="关闭时完整使用原有字符串拼装格式">
+                                    <label class="switch-label" title="开启：把规则、任务、素材拆成独立消息发送给模型；关闭：全部拼成一段提示词（兼容旧格式）">
                                         <input type="checkbox" id="structured-prompt-enabled">
                                         <span>启用</span>
                                     </label>
@@ -126,7 +126,7 @@
                                         <span><strong>智能风格链</strong><small>Style Card + 少量范例</small></span>
                                     </label>
                                 </div>
-                                <p id="style-mode-help" class="strength-help">沿用当前范例文章拼接逻辑，不改变任何原有行为。</p>
+                                <p id="style-mode-help" class="strength-help">原文拼接：把你启用的“范例文章”模板全文直接拼进生成提示词。</p>
                                 <div class="style-control-divider"></div>
                             </div>
 
@@ -189,6 +189,7 @@
                                 </div>
                                 <textarea id="deai-prompt" class="input-textarea" rows="3"
                                     style="display:none;" placeholder="自定义去AI味提示词..."></textarea>
+                                <p class="strength-help">把初稿再生成一版，去掉“AI 腔”（如排比堆砌、多余总结、生硬衔接）。可在下方填写具体修改要求，留空使用默认提示词。</p>
                             </div>
 
                             <div class="panel-section flow-node" data-step="6">
@@ -200,7 +201,7 @@
                                         <span>启用</span>
                                     </label>
                                 </div>
-                                <p class="strength-help">初稿完成后检索 3～5 个风格片段，再增加一次 API 改写；不会把语料片段注入初稿。</p>
+                                <p class="strength-help">初稿写完后，从所选语料库检索 3～5 段风格相近的文字，让模型参考其语言组织再改写一遍；片段只作参考，不会直接拼进正文。</p>
                                 <div id="style-rag-control" class="style-rag-control">
                                     <div class="style-rag-heading">
                                         <div><h4>文风语料</h4><p>选择二次改写使用的语料库</p></div>
@@ -434,7 +435,7 @@
                                     <div><h4>参考片段库</h4><p id="style-excerpt-summary">尚未生成片段</p></div>
                                     <button id="btn-rebuild-style-excerpts" class="btn btn-outline btn-sm" type="button">生成片段</button>
                                 </div>
-                                <div class="style-excerpt-help">系统按自然段切分并标记场景、视角、情绪和节奏。关闭片段可排除，置顶片段将优先入选。</div>
+                                <div class="style-excerpt-help">每个自然段自动切分，并标记场景、视角、情绪与节奏。点片段上的“关闭”可排除它；“置顶”的片段会优先入选。</div>
                                 <div id="style-excerpt-list" class="style-excerpt-list"></div>
                             </section>
                         </div>
@@ -662,7 +663,7 @@
             aria-labelledby="embedding-install-help-title">
             <div aria-hidden="true" style="color:var(--jade);font-size:32px;">↓</div>
             <h2 id="embedding-install-help-title">安装本地 ONNX 语义向量引擎</h2>
-            <p>当前环境尚未完整安装。请在项目根目录打开 PowerShell，依次执行：</p>
+            <p>本机还没装好语义向量引擎。请在项目根目录打开 PowerShell，依次执行以下两条命令（需要联网下载模型）：</p>
             <pre class="code-preview">powershell -ExecutionPolicy Bypass -File scripts\install-local-embedding.ps1
 .\.venv\Scripts\python scripts\verify_local_embedding.py</pre>
             <div class="workflow-node-explanation" style="margin:16px 0 0;text-align:left;">

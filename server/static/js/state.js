@@ -44,6 +44,28 @@ export const categoryConfig = {
     constraint: { name: '更多约束' },
 };
 
+/**
+ * 工作模式预设（骨架）。
+ * 为“公众号/运营文案”等工作模式预留的声明式常量；当前仅 novel 已实现，
+ * 其余模式由后端 /api/modes 提供完整元数据，这里只保留前端可用的精简常量。
+ */
+export const WORK_MODES = {
+    novel: {
+        id: 'novel',
+        name: '小说创作',
+        description: '人物、背景、剧情、范例组成的设定化写作',
+        categories: ['background', 'character', 'plot', 'example', 'constraint'],
+        enabled: true,
+    },
+    marketing: {
+        id: 'marketing',
+        name: '公众号/运营文案',
+        description: '公众号文章、运营文案、更新日志等公告与营销文体（规划中）',
+        categories: ['copy_article', 'copy_update', 'copy_social', 'copy_brand'],
+        enabled: false,
+    },
+};
+
 /** 收集当前启用的模板 ID（供生成与预览使用） */
 export function getActiveTemplateIds() {
     const ids = [];

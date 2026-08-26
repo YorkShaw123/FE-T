@@ -185,6 +185,7 @@ from routes.template_routes import template_bp  # noqa: E402
 from routes.generation_routes import generation_bp  # noqa: E402
 from routes.style_routes import style_bp  # noqa: E402
 from routes.style_corpora_routes import style_corpora_bp  # noqa: E402
+from routes.mode_routes import mode_bp  # noqa: E402
 
 
 def _schedule_desktop_exit():
@@ -221,6 +222,7 @@ def create_app(config_name=None):
     app.register_blueprint(generation_bp)
     app.register_blueprint(style_bp)
     app.register_blueprint(style_corpora_bp)
+    app.register_blueprint(mode_bp)
 
     # 注册错误处理
     register_error_handlers(app)
