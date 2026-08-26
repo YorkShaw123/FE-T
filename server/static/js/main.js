@@ -2,7 +2,7 @@
  * Flora Editor - 应用入口
  * 负责全局 UI 初始化（主题、导航、密钥、模型选择器、工作台草稿）与应用启动。
  */
-import { $, $$, api } from './utils.js';
+import { $, $$, api, toast } from './utils.js';
 import { state, DRAFT_KEY, DRAFT_FIELDS } from './state.js';
 import { initZoom } from './zoom.js';
 import { initWorkflowCanvas } from './workflowCanvas.js';
@@ -62,12 +62,33 @@ function initTabs() {
 function initApiKey() {
     const input = $('#api-key-input');
     const toggle = $('#api-key-toggle');
+    const localBtn = $('#api-key-local');
 
     toggle.addEventListener('click', () => {
         state.showApiKey = !state.showApiKey;
         input.type = state.showApiKey ? 'text' : 'password';
         toggle.textContent = state.showApiKey ? '🙈' : '👁';
     });
+
+    // 从本机读取 DeepSeek API Key（环境变量或密钥文件，仅本机回环服务）
+    if (localBtn) {
+        localBtn.addEventListener('click', async () => {
+            localBtn.disabled = true;
+            try {
+                const data = await api('/api/system/deepseek-api-key', { method: 'POST' });
+                if (data.found && data.key) {
+                    input.value = data.key;
+                    toast(`已从本机读取 DeepSeek Key（${data.source}，${data.masked}）`, 'success');
+                } else {
+                    toast('本机未找到 DeepSeek API Key，请手动输入', 'error');
+                }
+            } catch (e) {
+                toast(e.message || '读取本机 Key 失败', 'error');
+            } finally {
+                localBtn.disabled = false;
+            }
+        });
+    }
 }
 
 // ==================== 模型选择器 ====================

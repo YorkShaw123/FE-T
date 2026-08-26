@@ -282,6 +282,34 @@ def create_app(config_name=None):
             return jsonify({'success': False, 'error': '无法打开系统默认浏览器'}), 502
         return jsonify({'success': True, 'data': {'url': url}})
 
+    @app.post('/api/system/deepseek-api-key')
+    def read_local_deepseek_key():
+        """读取本机放置的 DeepSeek API Key（环境变量或本地密钥文件）。
+
+        仅用于本机回环服务：方便用户一键把本机密钥填入密钥输入框，
+        便于真实调用测试。密钥不写入数据库，只返回给同一回环来源的
+        前端页面；跨站写入请求已被 before_request 的统一 Origin 校验拦截。
+        """
+        from services.local_api_key import find_local_deepseek_key, mask_key
+
+        key, source = find_local_deepseek_key()
+        if not key:
+            return jsonify({
+                'success': False,
+                'found': False,
+                'error': (
+                    '本机未找到 DeepSeek API Key。可设置环境变量 DEEPSEEK_API_KEY，'
+                    '或把密钥放入文件 %USERPROFILE%\\.flora-editor\\deepseek-api-key.txt'
+                ),
+            }), 404
+        return jsonify({
+            'success': True,
+            'found': True,
+            'source': source,
+            'masked': mask_key(key),
+            'key': key,
+        })
+
     return app
 
 
