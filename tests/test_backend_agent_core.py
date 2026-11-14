@@ -205,10 +205,29 @@ async def test_thread_id_shape():
     assert _request().thread_id == 'flora_local_session_sess-1'
 
 
-async def test_missing_graph_reports_not_wired():
+async def test_missing_graph_reports_not_wired(monkeypatch):
+    """构建失败要给出可读错误，而不是 ImportError 冒泡到接口层。
+
+    用一个不存在的模块路径来验证，不依赖"某张图还没写"这种临时状态。
+    """
+    from backend.core import orchestrator as orchestrator_module
+
     orchestrator = Orchestrator()
+    monkeypatch.setitem(
+        orchestrator_module._GRAPH_BUILDERS,
+        AgentType.CONSISTENCY,
+        ('backend.agents.not_implemented_yet', 'build_consistency_graph'),
+    )
     with pytest.raises(AgentExecutionError, match='Agent 图尚未接入'):
-        orchestrator._get_agent_graph(AgentType.STYLE_QA)
+        orchestrator._get_agent_graph(AgentType.CONSISTENCY)
+
+
+async def test_style_qa_graph_is_wired():
+    """风格问答图已接入，应该能被懒加载并缓存。"""
+    orchestrator = Orchestrator()
+    graph = orchestrator._get_agent_graph(AgentType.STYLE_QA)
+    assert graph is not None
+    assert orchestrator._get_agent_graph(AgentType.STYLE_QA) is graph
 
 
 async def test_fallback_flag_propagates():

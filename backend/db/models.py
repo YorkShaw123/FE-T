@@ -333,6 +333,23 @@ class StyleChunk(Base):
         return data
 
 
+class StylePendingQuestion(Base):
+    """语料答不上来的问题，攒起来供用户补语料。
+
+    对应课件"低置信度问题入队"：它不是错误，而是一条待办——
+    系统知道自己不懂什么，比假装懂更有用。
+    """
+
+    __tablename__ = 'style_pending_questions'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    scene_type: Mapped[str] = mapped_column(String(30), nullable=False, default='auto')
+    corpus_ids: Mapped[str] = mapped_column(Text, nullable=False, default='[]')
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow)
+
+
 class GenerationRecord(Base):
     """生成记录：保存每次生成的四份正文与全部上下文。"""
 
