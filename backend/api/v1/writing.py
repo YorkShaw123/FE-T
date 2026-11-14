@@ -11,8 +11,8 @@ import asyncio
 import json
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,11 +22,13 @@ from backend.agents.writing.graph import build_writing_graph
 from backend.agents.writing.nodes import assemble_prompt_node
 from backend.agents.writing.streaming import use_writer
 from backend.config import DEFAULT_DEAI_PROMPT, LLM_PROVIDERS, TEMPLATE_CATEGORIES
+from backend.core.document_text import extract_uploaded_bytes
 from backend.core.exceptions import GenerationError
 from backend.core.logger import get_logger
 from backend.core.token_budget import calculate_token_budget
 from backend.db.models import PromptTemplate
 from backend.dependencies import get_db
+from backend.services import editing_service
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -252,22 +254,68 @@ async def generate(payload: WritingRequest, db: AsyncSession = Depends(get_db)) 
     return {'success': True, 'data': _complete_payload(state)}
 
 
+# ── 局部编辑（选中文字）─────────────────────────────────────
+
+class TransformRequest(BaseModel):
+    model_config = ConfigDict(extra='ignore')
+
+    api_key: str = ''
+    text: str = ''
+    operation: str = 'rewrite'
+    instruction: str = ''
+    surrounding_context: str = ''
+    provider: str = 'deepseek'
+    model: str = 'deepseek-v4-pro'
+
+
+@router.post('/v1/writing/transform', tags=['写作'])
+@router.post('/generation/transform-text', tags=['写作'], include_in_schema=False)
+async def transform_text(payload: TransformRequest) -> dict[str, Any]:
+    result = await editing_service.transform_text(
+        text=payload.text,
+        operation=payload.operation,
+        instruction=payload.instruction,
+        surrounding_context=payload.surrounding_context,
+        api_key=payload.api_key,
+        provider=payload.provider,
+        model=payload.model,
+    )
+    return {
+        'success': True,
+        'data': {'content': result['content'], 'usage': result.get('usage', {})},
+    }
+
+
+# ── 前置文章导入（TXT / DOCX / DOC）──────────────────────────
+
+@router.post('/v1/writing/extract-text', tags=['写作'])
+@router.post('/generation/extract-text', tags=['写作'], include_in_schema=False)
+async def extract_article_text(file: UploadFile) -> JSONResponse:
+    filename = file.filename or ''
+    try:
+        raw = await file.read()
+        text = extract_uploaded_bytes(raw, filename)
+    except OverflowError as exc:
+        return JSONResponse(status_code=413, content={'success': False, 'error': str(exc)})
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={'success': False, 'error': str(exc)})
+
+    return JSONResponse(content={
+        'success': True,
+        'data': {'text': text, 'char_count': len(text), 'filename': filename},
+    })
+
+
 # ── 生成（流式 SSE）────────────────────────────────────────
 
-@router.post('/v1/writing/generate-stream', tags=['写作'])
-@router.post('/generation/generate-stream', tags=['写作'], include_in_schema=False)
-async def generate_stream(
+async def writing_event_stream(
     payload: WritingRequest,
-    db: AsyncSession = Depends(get_db),
-) -> StreamingResponse:
-    errors = _validate(payload)
-    if errors:
-        raise GenerationError(errors[0])
+    templates: list[dict[str, Any]],
+) -> AsyncIterator[str]:
+    """把写作图跑成一条 SSE 事件流。
 
-    templates = await _load_templates(db, payload.template_ids)
-    if not templates:
-        raise GenerationError('没有活跃的模板')
-
+    统一入口 ``/api/v1/chat/stream`` 也复用这段，避免写两套流式逻辑。
+    """
     queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
     initial = _initial_state(payload, templates, stream=True)
 
@@ -286,25 +334,38 @@ async def generate_stream(
             finally:
                 await queue.put(None)
 
-    async def event_stream() -> AsyncIterator[str]:
-        task = asyncio.create_task(runner())
-        try:
-            yield _sse('status', {'type': 'status', 'data': 'prompt_preparing'})
-            while True:
-                item = await queue.get()
-                if item is None:
-                    break
-                event_type = item.get('type', 'status')
-                yield _sse(event_type, item)
-        finally:
-            if not task.done():
-                task.cancel()
-            else:
-                task.exception()  # 取走异常，避免 asyncio 警告
-            yield _sse('done', {})
+    task = asyncio.create_task(runner())
+    try:
+        yield _sse('status', {'type': 'status', 'data': 'prompt_preparing'})
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield _sse(item.get('type', 'status'), item)
+    finally:
+        if not task.done():
+            task.cancel()
+        else:
+            task.exception()  # 取走异常，避免 asyncio 警告
+        yield _sse('done', {})
+
+
+@router.post('/v1/writing/generate-stream', tags=['写作'])
+@router.post('/generation/generate-stream', tags=['写作'], include_in_schema=False)
+async def generate_stream(
+    payload: WritingRequest,
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    errors = _validate(payload)
+    if errors:
+        raise GenerationError(errors[0])
+
+    templates = await _load_templates(db, payload.template_ids)
+    if not templates:
+        raise GenerationError('没有活跃的模板')
 
     return StreamingResponse(
-        event_stream(),
+        writing_event_stream(payload, templates),
         media_type='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
