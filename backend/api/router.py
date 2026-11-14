@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from backend.api.v1 import health, modes, records, style, templates
+from backend.api.v1 import health, modes, records, style, templates, writing
 
 api_router = APIRouter(prefix='/api')
 api_router.include_router(health.router)
 api_router.include_router(templates.router)
 api_router.include_router(records.router)
 api_router.include_router(style.router)
+api_router.include_router(writing.router)
 api_router.include_router(modes.router)
