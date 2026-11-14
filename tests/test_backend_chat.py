@@ -176,7 +176,8 @@ def test_pre_filter_never_calls_model(api_client, monkeypatch):
     assert called['n'] == 0
 
 
-def test_rule_route_detects_writing_and_consistency(api_client):
+def test_rule_route_detects_consistency(api_client):
+    """一致性审查已接入：没有正文时给出引导，而不是假装跑完。"""
     with api_client.stream('POST', '/api/v1/chat/stream', json={
         'session_id': 's1', 'message': '帮我检查这段有没有前后矛盾',
     }) as response:
@@ -185,7 +186,7 @@ def test_rule_route_detects_writing_and_consistency(api_client):
     decision = next(item for item in events if item[0] == 'routing_decision')
     assert decision[1]['agent_type'] == 'consistency'
     guidance = next(item for item in events if item[0] == 'guidance')
-    assert '一致性审查' in guidance[1]['message']
+    assert '正文' in guidance[1]['message']
 
 
 def test_chat_writing_without_payload_gives_guidance(api_client):

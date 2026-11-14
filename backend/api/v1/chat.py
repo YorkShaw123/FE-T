@@ -250,6 +250,14 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)) 
                     async for event in writing_event_stream(payload, templates):
                         yield event
                     return
+        elif label == 'consistency':
+            async for event in _run_consistency(request):
+                yield event
+            return
+        elif label == 'style_qa':
+            async for event in _run_style_qa(request):
+                yield event
+            return
         else:
             yield _sse('guidance', _guidance(label))
 
@@ -264,3 +272,52 @@ async def chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_db)) 
             'X-Accel-Buffering': 'no',
         },
     )
+
+
+async def _run_consistency(request: ChatRequest) -> AsyncIterator[str]:
+    """一致性审查：非流式图，跑完把报告当作一段文本推回去。"""
+    from backend.agents.consistency.graph import build_consistency_graph
+
+    context = request.context
+    chapter_text = str(context.get('chapter_text') or '')
+    if not chapter_text.strip():
+        yield _sse('guidance', {
+            'type': 'guidance',
+            'message': '把要检查的正文发给我（或先在工作台选中一章），我才能比对设定。',
+            'action_label': '打开工作台',
+            'action_url': '#workspace',
+        })
+        yield _sse('done', {})
+        return
+
+    yield _sse('status', {'type': 'status', 'data': 'consistency_running'})
+    state = await build_consistency_graph().ainvoke({
+        'chapter_text': chapter_text,
+        'template_ids': list(context.get('template_ids') or []),
+        'api_key': str(context.get('api_key') or ''),
+        'provider': context.get('provider'),
+        'model': context.get('model'),
+    })
+    yield _sse('token', {'type': 'token', 'data': state.get('report', '')})
+    yield _sse('done', {})
+
+
+async def _run_style_qa(request: ChatRequest) -> AsyncIterator[str]:
+    """风格问答：走四分支图，把回答当作一段文本推回去。"""
+    from backend.agents.style_qa.graph import build_style_qa_graph
+
+    context = request.context
+    yield _sse('status', {'type': 'status', 'data': 'style_qa_running'})
+    state = await build_style_qa_graph().ainvoke(
+        {
+            'user_message': request.message,
+            'session_id': request.session_id,
+            'api_key': str(context.get('api_key') or ''),
+            'corpus_ids': list(context.get('corpus_ids') or []),
+            'scene_type': context.get('scene_type', 'auto'),
+            'messages': [],
+        },
+        config={'configurable': {'thread_id': f'flora_chat_{request.session_id}'}},
+    )
+    yield _sse('token', {'type': 'token', 'data': state.get('answer', '')})
+    yield _sse('done', {})
