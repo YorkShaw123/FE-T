@@ -4,33 +4,45 @@
 
 ---
 
-## 零、先看这里：当前阶段是 Agent 重构（2026-11 起）
+## 零、先看这里：已经是「本地服务 + 浏览器」（2026-11 起）
 
-下面第一到第十节描述的是 **1.0.2 桌面版**，仍可运行，但**不再是目标形态**。当前工作区有两套后端并存：
+**唯一的后端是 `backend/`**（FastAPI + LangGraph + 三层兜底 + 三张 Agent 图）。
+旧 Flask 后端 `server/` 已删除，桌面端（Tauri / NSIS / 冻结包）已退役。
+形态决策见 [ADR-001-目标形态.md](ADR-001-目标形态.md)。
 
-| | 旧 `server/`（Flask） | 新 `backend/`（FastAPI + LangGraph） |
-| --- | --- | --- |
-| 状态 | 可运行，仍是当前发货实现 | 架构完成，路由与三张图已迁移 |
-| 规模 | 43 个文件 / 约 8400 行 | 64 个文件 / 约 7500 行 |
-| 入口 | `python server/app.py` | `python run_server.py` |
-| 测试 | 169 个 | 129 个（合计 298） |
+| 项 | 现状 |
+| --- | --- |
+| 入口 | `python run_server.py`（读 `FLORA_PORT`，默认 5000） |
+| 访问 | 浏览器打开 `http://127.0.0.1:<port>` |
+| 代码 | `backend/` 约 70 个文件；前端资源在根目录 `web/` |
+| 测试 | `pytest tests` → 226 passed / 2 skipped |
+| 检查 | `ruff check --no-cache scripts tests backend run_server.py` |
 
-要改新代码，读 [docs/agent-migration/](agent-migration/) 的四份文档，不要从这里开始。
+要改代码，先读 [docs/agent-migration/](agent-migration/) 的四份文档。
 
-三条已生效的决定务必先知道：
+三条已生效的决定：
 
-1. **桌面端不再是最终目标**：Tauri 壳、NSIS 安装包、PyInstaller 冻结包都不再是验收项。「当前冻结包 exe 启动即退」是已知问题，**不需要修**。自测统一用 `python run_server.py`。
-2. **`smart` 智能风格链已停用**：`style_mode='smart'` 会回 `smart_disabled`，并给出「已停用」提示。不要恢复成静默降级。
-3. **目标形态未定**：本地服务 + 浏览器、服务器部署、还是别的，尚未决策。决策前只以「源码可跑」为硬约束，不为体积做妥协。
+1. **形态是本地服务 + 浏览器**。桌面端不再是目标，`src-tauri/`、`flora-server.spec`
+   保留但不再维护、不再验证（冻结包启动即退是已知问题，**不需要修**）。
+2. **`smart` 智能风格链已停用**：`style_mode='smart'` 回 `smart_disabled` 并提示「已停用」，
+   不要恢复成静默降级。
+3. **API 面积由测试锁死**：`tests/test_api_contract.py` 用 PATCH 探测 59 个旧路径，
+   少一个就红。新增端点不受限，改旧路径必须先改这份契约。
 
-已知降级项（不是 bug，别当 bug 查）：检索 `style_score` 固定 0（统计画像未迁，常数项不影响排序，`meta.missing_signals` 有标注）；语料索引只做特征与签名、不产语义向量；`create_all` 生成的 DDL 无服务端默认值（ORM 写入不受影响，裸 SQL 需显式给值）。
+已知降级项（不是 bug，别当 bug 查）：检索 `style_score` 固定 0（统计画像服务未迁移，
+常数项不影响排序，`meta.missing_signals` 有标注）；语料索引只做特征与签名、不产语义向量；
+`create_all` 生成的 DDL 无服务端默认值（ORM 写入不受影响，裸 SQL 需显式给值）。
+
+随 `server/` 一起移除、需要时从 git 历史恢复的三样东西：
+`scripts/benchmark_style_engine.py`（依赖统计画像服务）、
+`scripts/rebuild_author_style_profiles.py`、`scripts/verify_local_embedding.py`。
 
 日常命令：
 
 ```powershell
-.\.venv\Scripts\python.exe run_server.py              # 起新后端（读 FLORA_PORT）
-.\.venv\Scripts\python.exe -m pytest tests            # 全量 298 个
-.\.venv\Scripts\python.exe -m ruff check --no-cache server scripts tests backend run_server.py
+.\.venv\Scripts\python.exe run_server.py              # 起服务
+.\.venv\Scripts\python.exe -m pytest tests            # 226 passed / 2 skipped
+.\.venv\Scripts\python.exe -m ruff check --no-cache scripts tests backend run_server.py
 ```
 
 ---

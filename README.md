@@ -1,4 +1,9 @@
-# 🌧️ 雨生编辑器（Flora Editor）
+﻿# 🌧️ 雨生编辑器（Flora Editor）
+
+> **当前方向（2026-11 起）**：项目已重构为 FastAPI + LangGraph 的 Agent 架构，形态定为
+> **本地服务 + 浏览器**（`python run_server.py`，浏览器访问 `127.0.0.1:5000`）。
+> Windows 桌面端与安装包已退役，下文「桌面版」相关章节仅作历史说明。
+> 详见 [docs/ADR-001-目标形态.md](docs/ADR-001-目标形态.md) 与 [docs/HANDOVER.md](docs/HANDOVER.md)。
 
 > 面向中文文字与小说创作的 Windows 本地 AI 编辑器：用提示词模板组织设定，以文风系统提供参考，再调用用户选择的大语言模型生成和修改文章。
 

@@ -54,3 +54,8 @@ _perf_test/
 
 # 生成的图标源图（可重新生成）
 assets/
+
+# PyInstaller 构建残留（冻结包不再维护）
+.pyi-build/
+.pyi-dist/
+.dsh-*/

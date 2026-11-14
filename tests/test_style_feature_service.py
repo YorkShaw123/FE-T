@@ -1,4 +1,4 @@
-import math
+﻿import math
 import os
 import sys
 from pathlib import Path
@@ -11,7 +11,7 @@ SERVER_DIR = PROJECT_ROOT / "server"
 sys.path.insert(0, str(SERVER_DIR))
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
-from services.style_feature_service import (  # noqa: E402
+from backend.services.style_feature_service import (  # noqa: E402
     STYLE_FEATURE_IDS,
     STYLE_FEATURE_VERSION,
     analyze_style_features,

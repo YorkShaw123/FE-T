@@ -138,12 +138,17 @@ class Settings(BaseSettings):
         return f"sqlite+aiosqlite:///{self.database_path.as_posix()}"
 
     @property
+    def web_dir(self) -> Path:
+        """前端资源目录（项目根 web/，服务化后与后端解耦）。"""
+        return PROJECT_ROOT / 'web'
+
+    @property
     def static_dir(self) -> Path:
-        return PROJECT_ROOT / 'server' / 'static'
+        return self.web_dir / 'static'
 
     @property
     def templates_dir(self) -> Path:
-        return PROJECT_ROOT / 'server' / 'templates'
+        return self.web_dir
 
 
 @lru_cache(maxsize=1)

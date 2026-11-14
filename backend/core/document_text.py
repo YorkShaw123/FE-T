@@ -44,6 +44,25 @@ def extract_uploaded_bytes(raw: bytes, filename: str) -> str:
     return text
 
 
+def extract_document_path(path) -> str:
+    """从本地文件路径提取文本（离线批处理工具用；不修改原文件）。"""
+    file_path = Path(path)
+    extension = file_path.suffix.lower()
+    if extension not in SUPPORTED_ARTICLE_EXTENSIONS:
+        raise ValueError('仅支持 .txt、.doc、.docx 文件')
+    try:
+        size = file_path.stat().st_size
+    except OSError as exc:
+        raise ValueError(f'无法读取文件：{file_path.name}') from exc
+    if size > MAX_ARTICLE_FILE_SIZE:
+        raise OverflowError('文件不能超过 10 MB')
+    try:
+        raw = file_path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f'无法读取文件：{file_path.name}') from exc
+    return extract_uploaded_bytes(raw, file_path.name)
+
+
 def _decode_text_file(raw: bytes) -> str:
     for encoding in ('utf-8-sig', 'gb18030', 'utf-16', 'big5'):
         try:

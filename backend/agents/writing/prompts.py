@@ -1,11 +1,13 @@
-"""写作提示词组装（三条路线中的两条已迁移）。
+"""写作提示词组装。
+
+两条可用路线：
 
 - ``legacy``：把所有模板拼成一段 user 消息，与旧版 ``assemble_prompt`` 完全一致；
-- ``structured``：按系统 / 任务 / 素材 / 风格范例 / 输出要求切成多条消息；
-- ``smart``（风格链）：需要 Style Card 与片段精选，依赖 P3 的检索适配层，
-  当前显式降级为 structured 并把原因写进 metadata，等 P3 接回。
+- ``structured``：按系统 / 任务 / 素材 / 风格范例 / 输出要求切成多条消息。
 
-风格强度约束文案（medium / strict）是产品文案，逐字保留。
+``smart``（智能风格链）已停用：它依赖 Style Card 与片段精选，而精选算法属于旧实现，
+项目已决定不再维护该模式。传入 ``smart`` 时按停用处理并给出明确提示，
+不做静默降级。风格强度约束文案（medium / strict）是产品文案，逐字保留。
 """
 
 from __future__ import annotations

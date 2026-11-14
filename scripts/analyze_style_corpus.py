@@ -1,4 +1,4 @@
-"""离线分析本地中文风格语料，输出可重复生成的诊断报告。"""
+﻿"""离线分析本地中文风格语料，输出可重复生成的诊断报告。"""
 
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ SERVER_DIR = PROJECT_ROOT / "server"
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
 
-from routes.support.document_text import extract_document_path  # noqa: E402
-from services.style_feature_service import (  # noqa: E402
+from backend.core.document_text import extract_document_path  # noqa: E402
+from backend.services.style_feature_service import (  # noqa: E402
     STYLE_FEATURE_IDS,
     STYLE_FEATURE_VERSION,
     count_valid_characters,
 )
-from services.style_chunk_service import split_corpus_text  # noqa: E402
-from services.style_window_service import iter_style_window_analyses  # noqa: E402
+from backend.services.style_chunk_service import split_corpus_text  # noqa: E402
+from backend.services.style_window_service import iter_style_window_analyses  # noqa: E402
 
 
 SUPPORTED_CORPUS_EXTENSIONS = frozenset({".txt", ".docx"})

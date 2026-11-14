@@ -1,3 +1,5 @@
+﻿> **注意（2026-11 起）**：后端已迁移到 `backend/`（FastAPI + LangGraph），形态为本地服务 + 浏览器，运行入口 `python run_server.py`。本文涉及的 `server/` 路径为历史说明，见 [ADR-001-目标形态.md](ADR-001-目标形态.md)。
+
 # 雨生编辑器（Flora Editor）架构说明
 
 ## 产品边界

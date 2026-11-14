@@ -1,4 +1,4 @@
-import csv
+﻿import csv
 import json
 import zipfile
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.analyze_style_corpus import CorpusAnalysisError, analyze_corpus
-from services.style_feature_service import STYLE_FEATURE_IDS
+from backend.services.style_feature_service import STYLE_FEATURE_IDS
 
 
 def write_docx(path: Path, paragraphs: list[str]):
