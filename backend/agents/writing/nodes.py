@@ -152,10 +152,11 @@ async def assemble_prompt_node(state: WritingState) -> dict[str, Any]:
     style_metadata: dict[str, Any] = {'profiles': [], 'fallback_reason': ''}
 
     if style_mode == 'smart':
-        # 风格链需要 Style Card 与片段精选，P3 接入后再启用；先显式降级并留痕。
+        # 已停用的模式：不做静默降级，明确告知并回落到普通组装路线
         route = 'structured' if state.get('structured_prompt_enabled') else 'legacy'
-        style_metadata['fallback_reason'] = 'smart 路线待 P3 接入风格卡与片段精选'
-        logger.info('writing.smart_route_fallback')
+        style_metadata['fallback_reason'] = '智能风格链已停用，本次按普通路线生成'
+        style_metadata['disabled_mode'] = 'smart'
+        logger.info('writing.smart_mode_disabled')
     elif style_mode == 'off':
         templates = [item for item in templates if item.category != 'example']
 

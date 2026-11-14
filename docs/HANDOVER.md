@@ -2,11 +2,46 @@
 
 本文件面向下一个接手 Flora Editor 的人（或未来的自己）。它只记录**读代码看不出来**的东西：现状锚点、运行陷阱、约束和待决事项。产品功能与设计请看 [README.md](../README.md)、[architecture.md](architecture.md)、[style-engine/](../style-engine/)。
 
+---
+
+## 零、先看这里：当前阶段是 Agent 重构（2026-11 起）
+
+下面第一到第十节描述的是 **1.0.2 桌面版**，仍可运行，但**不再是目标形态**。当前工作区有两套后端并存：
+
+| | 旧 `server/`（Flask） | 新 `backend/`（FastAPI + LangGraph） |
+| --- | --- | --- |
+| 状态 | 可运行，仍是当前发货实现 | 架构完成，路由与三张图已迁移 |
+| 规模 | 43 个文件 / 约 8400 行 | 64 个文件 / 约 7500 行 |
+| 入口 | `python server/app.py` | `python run_server.py` |
+| 测试 | 169 个 | 129 个（合计 298） |
+
+要改新代码，读 [docs/agent-migration/](agent-migration/) 的四份文档，不要从这里开始。
+
+三条已生效的决定务必先知道：
+
+1. **桌面端不再是最终目标**：Tauri 壳、NSIS 安装包、PyInstaller 冻结包都不再是验收项。「当前冻结包 exe 启动即退」是已知问题，**不需要修**。自测统一用 `python run_server.py`。
+2. **`smart` 智能风格链已停用**：`style_mode='smart'` 会回 `smart_disabled`，并给出「已停用」提示。不要恢复成静默降级。
+3. **目标形态未定**：本地服务 + 浏览器、服务器部署、还是别的，尚未决策。决策前只以「源码可跑」为硬约束，不为体积做妥协。
+
+已知降级项（不是 bug，别当 bug 查）：检索 `style_score` 固定 0（统计画像未迁，常数项不影响排序，`meta.missing_signals` 有标注）；语料索引只做特征与签名、不产语义向量；`create_all` 生成的 DDL 无服务端默认值（ORM 写入不受影响，裸 SQL 需显式给值）。
+
+日常命令：
+
+```powershell
+.\.venv\Scripts\python.exe run_server.py              # 起新后端（读 FLORA_PORT）
+.\.venv\Scripts\python.exe -m pytest tests            # 全量 298 个
+.\.venv\Scripts\python.exe -m ruff check --no-cache server scripts tests backend run_server.py
+```
+
+---
+
 ## 一、这是什么
 
 面向中文小说创作的 Windows 本地 AI 写作工具，产品名「雨生编辑器」，Tauri 2 壳 + Flask Sidecar + 原生 JS 界面 + 本地 SQLite。核心差异化是**本地中文文风引擎**（Style Engine）：句长节奏、标点、功能词等可解释特征 + BM25/向量混合检索 + 内容泄漏惩罚，默认完全离线，不依赖远程 Embedding，不引入 PyTorch。
 
-正式形态只有一种：Windows 桌面程序。浏览器入口仅供本机开发，不得改造成 Web / SaaS / 自托管。
+正式形态（1.0.2 时期）：Windows 桌面程序。浏览器入口仅供本机开发，不得改造成 Web / SaaS / 自托管。
+
+> 该定位已在 2026-11 的 Agent 重构中调整，见本文第零节。
 
 ## 二、现状锚点
 

@@ -132,13 +132,15 @@ def test_preview_structured_route(api_client, fake_model):
     assert data['messages'][0]['role'] == 'system'
 
 
-def test_preview_smart_route_reports_fallback(api_client, fake_model):
+def test_preview_smart_route_reports_disabled(api_client, fake_model):
+    """智能风格链已停用：要明确告知，而不是伪装成还能用。"""
     template_id = _create_template(api_client)
     data = api_client.post('/api/v1/writing/preview', json=_payload(
         template_id, style_mode='smart',
     )).json()['data']
-    assert data['style_mode'] == 'smart_fallback_legacy'
-    assert 'P3' in data['style_metadata']['fallback_reason']
+    assert data['style_mode'] == 'smart_disabled'
+    assert '已停用' in data['style_metadata']['fallback_reason']
+    assert data['style_metadata']['disabled_mode'] == 'smart'
 
 
 # ── 生成 ─────────────────────────────────────────────────

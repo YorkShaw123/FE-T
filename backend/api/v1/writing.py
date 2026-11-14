@@ -212,7 +212,8 @@ async def preview_prompt(
 
     style_mode = payload.style_mode
     if style_mode == 'smart':
-        style_mode = 'smart_fallback_legacy'
+        # 已停用的模式：明确回给前端，不留"看起来还在用"的模糊状态
+        style_mode = 'smart_disabled'
 
     return {
         'success': True,
