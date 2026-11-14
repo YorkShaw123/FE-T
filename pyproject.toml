@@ -1,6 +1,10 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# 新后端大量使用 async 用例（Agent 图、编排器、重试）。
+# auto 模式让 `async def test_...` 直接可跑，不必每个用例挂装饰器。
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 target-version = "py310"
