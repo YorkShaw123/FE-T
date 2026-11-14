@@ -27,7 +27,9 @@ from backend.api.router import api_router
 from backend.config import get_settings
 from backend.core.exceptions import AppError, error_payload, to_user_message
 from backend.core.logger import configure_logging, get_logger
-from backend.db import check_connection, dispose_engine
+from backend.db import check_connection, dispose_engine, session_scope
+from backend.db.migrations import run_migrations
+from backend.db.starter_templates import ensure_starter_templates
 
 logger = get_logger(__name__)
 
@@ -55,6 +57,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings.resolved_data_dir.mkdir(parents=True, exist_ok=True)
     settings.resolved_models_dir.mkdir(parents=True, exist_ok=True)
 
+    # 启动时执行幂等迁移（与旧 Flask 版本的行为一致）
+    migration_summary = await run_migrations()
+
+    # 首次初始化时写入入门示例模板；已有用户不会重复写入
+    async with session_scope() as session:
+        seeded = await ensure_starter_templates(session)
+
     db_ok = await check_connection()
     logger.info(
         'app.startup',
@@ -62,6 +71,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         env=settings.app_env,
         data_dir=str(settings.resolved_data_dir),
         database='ok' if db_ok else 'unavailable',
+        starter_seeded=seeded,
+        **migration_summary,
     )
     try:
         yield
