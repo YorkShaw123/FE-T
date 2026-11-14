@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """生成 Flora Editor 7 页答辩 PPT"""
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
+from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE

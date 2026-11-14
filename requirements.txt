@@ -1,5 +1,26 @@
+# ── Web 框架 ──────────────────────────────────────────────
 flask==3.1.1
 flask-sqlalchemy==3.1.1
+fastapi==0.162.7
+uvicorn[standard]==0.54.0
+python-multipart==0.0.20
+
+# ── 配置与数据 ────────────────────────────────────────────
+pydantic==2.13.4
+pydantic-settings==2.16.3
+sqlalchemy[asyncio]==2.0.51
+aiosqlite==0.22.1
+
+# ── Agent 框架（与课件版本锁定一致，不要随意升级）──────────
+langchain==1.2.10
+langchain-core==1.2.16
+langgraph==1.0.9
+langchain-openai==1.1.10
+
+# ── 文本与文档处理 ────────────────────────────────────────
 olefile==0.47
 # Style RAG 向量矩阵计算（检索余弦相似度）
 numpy==2.0.2
+
+# ── HTTP 客户端 ───────────────────────────────────────────
+httpx==0.28.1
